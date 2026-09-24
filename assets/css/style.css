@@ -758,3 +758,18 @@ footer .socials { display: flex; justify-content: center; gap: 18px; margin-bott
   color: #fff;
   background: var(--gradient);
 }
+
+/* CV : projets principaux mis en évidence, secondaires plus discrets */
+.cv-main-project {
+  border-left: 4px solid var(--accent);
+  background: linear-gradient(90deg, rgba(79, 70, 229, .07), transparent);
+  padding: 10px 14px;
+  border-radius: 0 10px 10px 0;
+}
+.cv-main-project strong::before { content: "⭐ "; }
+.cv-secondary { display: grid; grid-template-columns: 1fr 1.4fr; gap: 6px 22px; font-size: .84rem; color: var(--text-mute); }
+.cv-secondary h5 { margin: 0 0 4px; font-size: .74rem; text-transform: uppercase; letter-spacing: .08em; color: var(--text-mute); }
+.cv-secondary ul { margin: 0 0 8px; padding-left: 16px; }
+.cv-secondary li { margin-bottom: 2px; }
+.cv-secondary strong { color: var(--text-soft); font-weight: 600; }
+@media (max-width: 600px) { .cv-secondary { grid-template-columns: 1fr; } }
