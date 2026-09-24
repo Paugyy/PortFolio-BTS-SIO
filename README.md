@@ -2,7 +2,7 @@
 
 Portfolio réalisé en HTML / CSS / JavaScript (sans framework), hébergé sur **GitHub Pages**.
 
-🌐 **En ligne :** https://paugyy.github.io/PortFolio-BTS-SIO/
+🌐 **En ligne :** https://paugy.org
 
 ## Pages
 | Fichier | Contenu |
