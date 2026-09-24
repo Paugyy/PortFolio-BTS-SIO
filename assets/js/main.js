@@ -222,7 +222,7 @@ function renderProjects(list, gridId) {
       <h4>🛠️ Ce que j'ai réalisé</h4><ul>${p.tasks.map(o => `<li>${o}</li>`).join("")}</ul>
       ${p.skills ? `<h4>📚 Compétences BTS SIO mobilisées</h4><ul>${p.skills.map(o => `<li>${o}</li>`).join("")}</ul>` : ""}
       <div class="tags">${p.tags.map((t, k) => `<span class="tag ${tagColors[k % 4]}">${t}</span>`).join("")}</div>
-      ${p.link ? `<div class="btn-row" style="justify-content:flex-start"><a class="btn btn-primary" href="${p.link}" target="_blank" rel="noopener">Voir le projet ↗</a></div>` : ""}`;
+      ${p.link ? `<div class="btn-row" style="justify-content:flex-start"><a class="btn btn-primary" href="${p.link}" target="_blank" rel="noopener">${p.linkLabel || "Voir le projet"} ↗</a></div>` : ""}`;
     modal.classList.add("open");
   });
   const close = () => modal.classList.remove("open");
