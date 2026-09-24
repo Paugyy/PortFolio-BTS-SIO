@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CV — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">Curriculum Vitae</span>
+    <h1 class="title-xl reveal d1">Mon <span class="grad">CV</span></h1>
+    <div class="btn-row reveal d2 no-print">
+      <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
+      <a class="btn btn-ghost" href="contact.html">Me contacter</a>
+    </div>
+  </header>
+
+  <section style="padding-top:10px">
+    <div class="container" style="max-width:1060px">
+      <article class="cv reveal">
+        <!-- ===== Colonne gauche ===== -->
+        <aside class="cv-side">
+          <div class="cv-photo"><div><span class="grad">YP</span></div></div>
+          <div class="cv-name">
+            <h2>Yannis Paugy</h2>
+            <p>Alternant BTS SIO — option SISR<br>Administrateur systèmes &amp; réseaux</p>
+          </div>
+
+          <h3>Contact</h3>
+          <ul>
+            <li>✉️ yapaugy@gmail.com</li>
+            <li>📱 06 XX XX XX XX</li>
+            <li>📍 [Ville]</li>
+            <li>🐙 github.com/Paugyy</li>
+            <li>💼 linkedin.com/in/[profil]</li>
+            <li>🚗 Permis B</li>
+          </ul>
+
+          <h3>Compétences techniques</h3>
+          <ul>
+            <li>Réseaux / VLAN / routage<div class="mini-bar"><span style="width:80%"></span></div></li>
+            <li>Linux Debian<div class="mini-bar"><span style="width:80%"></span></div></li>
+            <li>Windows Server / AD<div class="mini-bar"><span style="width:70%"></span></div></li>
+            <li>pfSense / sécurité<div class="mini-bar"><span style="width:70%"></span></div></li>
+            <li>Proxmox / virtualisation<div class="mini-bar"><span style="width:75%"></span></div></li>
+            <li>Docker<div class="mini-bar"><span style="width:70%"></span></div></li>
+            <li>HTML / CSS / JS<div class="mini-bar"><span style="width:60%"></span></div></li>
+          </ul>
+
+          <h3>Langues</h3>
+          <ul>
+            <li>Français — langue maternelle</li>
+            <li>Anglais — B1 (technique)</li>
+          </ul>
+
+          <h3>Qualités</h3>
+          <div class="tags">
+            <span class="tag">Autonome</span><span class="tag cyan">Curieux</span><span class="tag pink">Rigoureux</span><span class="tag amber">Esprit d'équipe</span>
+          </div>
+
+          <h3>Centres d'intérêt</h3>
+          <ul>
+            <li>Homelab &amp; auto-hébergement</li>
+            <li>Cybersécurité (CTF)</li>
+            <li>[Sport / loisir]</li>
+          </ul>
+        </aside>
+
+        <!-- ===== Colonne droite ===== -->
+        <div class="cv-main">
+          <h3>Profil</h3>
+          <p style="color:var(--text-soft)">Étudiant en BTS SIO option SISR en alternance, passionné par l'infrastructure et la cybersécurité. J'aime comprendre comment les choses fonctionnent, les automatiser et les documenter. Je recherche [une poursuite d'études / un poste] en administration systèmes et réseaux.</p>
+
+          <h3>Expérience</h3>
+          <div class="cv-entry">
+            <div class="top"><strong>Alternant technicien systèmes &amp; réseaux</strong><span class="when">2025 — aujourd'hui</span></div>
+            <div class="where">[Nom de l'entreprise] · [Ville]</div>
+            <ul>
+              <li>Création et administration de VM Debian sous Proxmox VE</li>
+              <li>Déploiement d'une application web en conteneurs Docker (Nginx, Node.js, PostgreSQL, MinIO)</li>
+              <li>Segmentation réseau des services (4 réseaux Docker isolés)</li>
+              <li>Rédaction de la documentation technique et versionnage Git</li>
+            </ul>
+          </div>
+          <div class="cv-entry">
+            <div class="top"><strong>[Stage / job précédent]</strong><span class="when">[Date]</span></div>
+            <div class="where">[Entreprise] · [Ville]</div>
+            <ul><li>[Mission principale]</li></ul>
+          </div>
+
+          <h3>Formation</h3>
+          <div class="cv-entry">
+            <div class="top"><strong>BTS SIO — option SISR (alternance)</strong><span class="when">2025 — 2027</span></div>
+            <div class="where">[Nom de l'école] · [Ville]</div>
+            <ul><li>Administration Windows / Linux, réseaux, cybersécurité, virtualisation</li></ul>
+          </div>
+          <div class="cv-entry">
+            <div class="top"><strong>Baccalauréat [spécialité]</strong><span class="when">2025</span></div>
+            <div class="where">[Lycée] · [Ville]</div>
+          </div>
+
+          <h3>Projets marquants</h3>
+          <div class="cv-entry">
+            <div class="top"><strong>DataBridge</strong><span class="when">2026</span></div>
+            <ul><li>Plateforme d'import Excel/CSV vers PostgreSQL — Docker, Vue.js, Node.js</li></ul>
+          </div>
+          <div class="cv-entry">
+            <div class="top"><strong>Pare-feu pfSense &amp; VLAN</strong><span class="when">BTS</span></div>
+            <ul><li>Segmentation LAN / DMZ / invités, NAT, VPN OpenVPN</li></ul>
+          </div>
+          <div class="cv-entry">
+            <div class="top"><strong>Bastion Apache Guacamole</strong><span class="when">BTS</span></div>
+            <ul><li>Accès RDP / SSH centralisé via navigateur, déployé avec Docker</li></ul>
+          </div>
+
+          <h3>Certifications</h3>
+          <div class="cv-entry">
+            <ul>
+              <li>[ex : Cisco CCNA 1 — Introduction to Networks]</li>
+              <li>[ex : ANSSI SecNumacadémie / PIX]</li>
+            </ul>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+</main>
+<script src="assets/js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ressources — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">Boîte à outils</span>
+    <h1 class="title-xl reveal d1">Mes <span class="grad">ressources</span></h1>
+    <p class="lead reveal d2">Les commandes et procédures que j'utilise au quotidien. Clique sur une commande pour la copier.</p>
+  </header>
+
+  <section style="padding-top:10px">
+    <div class="container">
+      <input class="search reveal" id="search" type="search" placeholder="🔎  Rechercher une commande, un outil… (ex : ip, docker, vlan)">
+      <nav class="toc reveal" id="toc">
+        <a href="#linux">🐧 Linux</a>
+        <a href="#windows">🪟 Windows</a>
+        <a href="#reseau">📡 Réseau / Cisco</a>
+        <a href="#docker">🐳 Docker</a>
+        <a href="#git">📦 Git</a>
+        <a href="#guides">📘 Procédures</a>
+      </nav>
+
+      <div class="res-section reveal" id="linux"><h2>🐧 Commandes Linux</h2><div class="cmd-table-wrap"><table class="cmd-table" data-src="linux"></table></div></div>
+      <div class="res-section reveal" id="windows"><h2>🪟 Commandes Windows (CMD &amp; PowerShell)</h2><div class="cmd-table-wrap"><table class="cmd-table" data-src="windows"></table></div></div>
+      <div class="res-section reveal" id="reseau"><h2>📡 Réseau &amp; Cisco IOS</h2><div class="cmd-table-wrap"><table class="cmd-table" data-src="reseau"></table></div></div>
+      <div class="res-section reveal" id="docker"><h2>🐳 Docker</h2><div class="cmd-table-wrap"><table class="cmd-table" data-src="docker"></table></div></div>
+      <div class="res-section reveal" id="git"><h2>📦 Git</h2><div class="cmd-table-wrap"><table class="cmd-table" data-src="git"></table></div></div>
+
+      <!-- ===================== PROCÉDURES ===================== -->
+      <div class="res-section reveal" id="guides">
+        <h2>📘 Procédures d'installation &amp; configuration</h2>
+
+        <details class="guide">
+          <summary>🔥 pfSense — installation et configuration de base <span class="sub">Pare-feu / routeur</span></summary>
+          <div class="guide-body">
+            <h4>1. Prérequis</h4>
+            <ul>
+              <li>Une VM (Proxmox, VirtualBox, VMware) avec <strong>2 cartes réseau</strong> : WAN (vers Internet) et LAN (réseau interne).</li>
+              <li>1 vCPU, 1 à 2 Go de RAM, 16 Go de disque. ISO téléchargée sur <code>pfsense.org</code>.</li>
+            </ul>
+            <h4>2. Installation</h4>
+            <ol>
+              <li>Démarrer sur l'ISO → <em>Install</em> → partitionnement <strong>Auto (ZFS)</strong> → redémarrer.</li>
+              <li>À la console : « Should VLANs be set up now? » → <code>n</code> (on les fera plus tard).</li>
+              <li>Assigner les interfaces : WAN = <code>vtnet0</code> / <code>em0</code>, LAN = <code>vtnet1</code> / <code>em1</code>.</li>
+              <li>Option <code>2</code> du menu console → définir l'IP du LAN (ex : <code>192.168.10.1/24</code>) et activer le DHCP.</li>
+            </ol>
+            <h4>3. Interface web</h4>
+            <ol>
+              <li>Depuis un poste du LAN : <code>https://192.168.10.1</code> — identifiants par défaut <code>admin</code> / <code>pfsense</code>.</li>
+              <li>Suivre l'assistant : nom d'hôte, DNS, fuseau horaire, <strong>changer le mot de passe admin</strong>.</li>
+            </ol>
+            <h4>4. Créer des VLAN</h4>
+            <ol>
+              <li><em>Interfaces → Assignments → VLANs → Add</em> : interface parent = LAN, tag = <code>10</code>, <code>20</code>…</li>
+              <li><em>Interface Assignments</em> : ajouter chaque VLAN, l'activer, lui donner une IP (ex : <code>10.0.10.1/24</code>).</li>
+              <li><em>Services → DHCP Server</em> : activer le DHCP sur chaque VLAN.</li>
+            </ol>
+            <h4>5. Règles de pare-feu</h4>
+            <ul>
+              <li><em>Firewall → Rules</em> : les règles sont lues <strong>de haut en bas</strong>, la première qui correspond s'applique.</li>
+              <li>Par défaut tout est bloqué sur une nouvelle interface : ajouter une règle <em>Pass</em> explicite.</li>
+              <li>Exemple : bloquer VLAN Invités → LAN, puis autoriser Invités → any (Internet).</li>
+            </ul>
+            <h4>6. Redirection de port (NAT)</h4>
+            <p><em>Firewall → NAT → Port Forward → Add</em> : interface WAN, port <code>443</code> → IP du serveur en DMZ, port <code>443</code>. La règle de pare-feu associée est créée automatiquement.</p>
+            <h4>7. VPN OpenVPN (accès distant)</h4>
+            <ol>
+              <li><em>System → Cert Manager</em> : créer une CA puis un certificat serveur.</li>
+              <li><em>VPN → OpenVPN → Wizards</em> : suivre l'assistant (authentification locale).</li>
+              <li><em>System → Package Manager</em> : installer <code>openvpn-client-export</code> pour générer les fichiers clients.</li>
+            </ol>
+            <div class="note">💡 Toujours faire une sauvegarde : <em>Diagnostics → Backup &amp; Restore</em> avant une grosse modification.</div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🧭 Apache Guacamole avec Docker <span class="sub">Bastion d'accès RDP / SSH / VNC</span></summary>
+          <div class="guide-body">
+            <p>Guacamole permet d'accéder à ses serveurs depuis un simple navigateur. Il se compose de 3 briques : <strong>guacd</strong> (le moteur qui parle RDP/SSH), <strong>guacamole</strong> (l'interface web) et une <strong>base de données</strong> (utilisateurs et connexions).</p>
+            <h4>1. Préparer le dossier</h4>
+<pre class="code">mkdir -p ~/guacamole/init && cd ~/guacamole
+<span class="c"># Générer le script de création de la base</span>
+docker run --rm guacamole/guacamole:1.5.5 /opt/guacamole/bin/initdb.sh --postgresql > init/initdb.sql</pre>
+            <h4>2. Fichier <code>docker-compose.yml</code></h4>
+<pre class="code">services:
+  guacd:
+    image: guacamole/guacd:1.5.5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: MotDePasseSolide
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - ./data:/var/lib/postgresql/data
+
+  guacamole:
+    image: guacamole/guacamole:1.5.5
+    restart: unless-stopped
+    depends_on: [guacd, postgres]
+    environment:
+      GUACD_HOSTNAME: guacd
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USER: guacamole_user
+      POSTGRESQL_PASSWORD: MotDePasseSolide
+    ports:
+      - "8080:8080"</pre>
+            <h4>3. Lancer et se connecter</h4>
+<pre class="code">docker compose up -d
+docker compose logs -f guacamole   <span class="c"># vérifier qu'il n'y a pas d'erreur</span></pre>
+            <ol>
+              <li>Ouvrir <code>http://IP_DU_SERVEUR:8080/guacamole</code></li>
+              <li>Identifiants par défaut : <code>guacadmin</code> / <code>guacadmin</code> → <strong>créer un nouvel admin et supprimer guacadmin</strong>.</li>
+              <li><em>Paramètres → Connexions → Nouvelle connexion</em> : protocole RDP, hôte, port 3389, identifiants, et cocher « Ignorer le certificat du serveur » en lab.</li>
+            </ol>
+            <div class="note">🔐 En production : placer Guacamole derrière un reverse proxy HTTPS (Nginx) et activer la double authentification (extension TOTP).</div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🗂️ Active Directory sur Windows Server <span class="sub">AD DS, DNS, OU, GPO</span></summary>
+          <div class="guide-body">
+            <ol>
+              <li>Donner une <strong>IP fixe</strong> au serveur et le renommer (ex : <code>SRV-AD01</code>), puis redémarrer.</li>
+              <li><em>Gestionnaire de serveur → Ajouter des rôles</em> : cocher <strong>AD DS</strong> (et DNS).</li>
+              <li>Cliquer sur le drapeau → <em>Promouvoir ce serveur en contrôleur de domaine</em> → nouvelle forêt (ex : <code>entreprise.local</code>).</li>
+              <li>Après redémarrage : <em>Utilisateurs et ordinateurs Active Directory</em> → créer des OU (Direction, Compta, Informatique…).</li>
+              <li>Créer utilisateurs et groupes dans les OU.</li>
+              <li><em>Gestion des stratégies de groupe</em> : créer une GPO, la lier à une OU, puis <code>gpupdate /force</code> sur le client.</li>
+              <li>Sur le poste client : DNS = IP du contrôleur de domaine, puis joindre le domaine.</li>
+            </ol>
+<pre class="code"><span class="c"># La même chose en PowerShell</span>
+Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+Install-ADDSForest -DomainName "entreprise.local"
+New-ADOrganizationalUnit -Name "Informatique"
+New-ADUser -Name "Jean Dupont" -SamAccountName jdupont -Path "OU=Informatique,DC=entreprise,DC=local" -AccountPassword (Read-Host -AsSecureString) -Enabled $true
+Add-Computer -DomainName entreprise.local -Restart   <span class="c"># sur le client</span></pre>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🖥️ Proxmox VE — créer une VM Debian <span class="sub">Virtualisation</span></summary>
+          <div class="guide-body">
+            <ol>
+              <li>Téléverser l'ISO : <em>local → ISO Images → Upload</em>.</li>
+              <li><em>Create VM</em> : nom, ISO, disque (VirtIO SCSI), CPU (type <code>host</code>), RAM, réseau (<code>vmbr0</code>, modèle VirtIO).</li>
+              <li>Installer Debian (sans environnement de bureau, cocher « serveur SSH »).</li>
+              <li>Installer l'agent : <code>apt install qemu-guest-agent</code> puis l'activer dans <em>Options → QEMU Guest Agent</em>.</li>
+              <li>Transformer une VM propre en <strong>Template</strong> pour cloner rapidement les suivantes.</li>
+              <li>Programmer des sauvegardes : <em>Datacenter → Backup</em>.</li>
+            </ol>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🔑 SSH par clé (sans mot de passe) <span class="sub">Sécurisation serveur</span></summary>
+          <div class="guide-body">
+<pre class="code"><span class="c"># Sur MON poste : créer une paire de clés</span>
+ssh-keygen -t ed25519 -C "yannis@poste"
+<span class="c"># Envoyer la clé publique au serveur</span>
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@IP_SERVEUR
+<span class="c"># Sur le SERVEUR : désactiver la connexion par mot de passe et root</span>
+sudo nano /etc/ssh/sshd_config
+  PasswordAuthentication no
+  PermitRootLogin no
+sudo systemctl restart ssh</pre>
+            <div class="note">⚠️ Tester la connexion par clé dans un <strong>second terminal</strong> avant de fermer le premier, sinon risque de se bloquer dehors.</div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🐳 Installer Docker sur Debian <span class="sub">Conteneurs</span></summary>
+          <div class="guide-body">
+<pre class="code">sudo apt update && sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list
+sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+sudo usermod -aG docker $USER   <span class="c"># puis se déconnecter / reconnecter</span>
+docker run hello-world</pre>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🎫 GLPI sur Debian (LAMP) <span class="sub">Gestion de parc &amp; tickets</span></summary>
+          <div class="guide-body">
+<pre class="code">sudo apt install -y apache2 mariadb-server php php-{mysql,curl,gd,intl,xml,mbstring,zip,bz2,ldap,bcmath}
+sudo mysql_secure_installation
+sudo mysql -e "CREATE DATABASE glpi; CREATE USER 'glpi'@'localhost' IDENTIFIED BY 'MotDePasse'; GRANT ALL ON glpi.* TO 'glpi'@'localhost';"
+<span class="c"># Télécharger la dernière version sur github.com/glpi-project/glpi/releases</span>
+sudo tar -xzf glpi-*.tgz -C /var/www/html/
+sudo chown -R www-data:www-data /var/www/html/glpi</pre>
+            <ol>
+              <li>Ouvrir <code>http://IP/glpi</code> et suivre l'assistant (base <code>glpi</code>).</li>
+              <li>Comptes par défaut : <code>glpi/glpi</code> (admin) — <strong>changer tous les mots de passe</strong> et supprimer <code>install/install.php</code>.</li>
+              <li>Installer l'agent GLPI sur les postes pour l'inventaire automatique.</li>
+            </ol>
+          </div>
+        </details>
+
+        <p class="empty" id="empty" hidden>Aucun résultat pour cette recherche.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/main.js"></script>
+<script>
+  /* ========= Commandes : [commande, description] — ["# Titre"] pour une catégorie ========= */
+  const CMDS = {
+    linux: [
+      ["# Navigation & fichiers"],
+      ["pwd", "Afficher le dossier courant"],
+      ["ls -la", "Lister tous les fichiers (cachés inclus) avec détails"],
+      ["cd /chemin", "Changer de dossier"],
+      ["mkdir -p a/b/c", "Créer des dossiers (et les parents)"],
+      ["cp -r src dest", "Copier un dossier"],
+      ["mv ancien nouveau", "Déplacer / renommer"],
+      ["rm -rf dossier", "Supprimer un dossier (attention, définitif !)"],
+      ["cat fichier", "Afficher un fichier"],
+      ["tail -f /var/log/syslog", "Suivre un journal en temps réel"],
+      ["find / -name 'fichier*'", "Rechercher un fichier"],
+      ["grep -rn 'texte' /etc", "Rechercher du texte dans des fichiers"],
+      ["nano fichier", "Éditer un fichier"],
+      ["# Droits & utilisateurs"],
+      ["chmod 755 fichier", "Changer les droits (rwx r-x r-x)"],
+      ["chown user:groupe fichier", "Changer le propriétaire"],
+      ["sudo adduser nom", "Créer un utilisateur"],
+      ["sudo usermod -aG sudo nom", "Ajouter un utilisateur au groupe sudo"],
+      ["passwd", "Changer son mot de passe"],
+      ["whoami / id", "Qui suis-je / mes groupes"],
+      ["# Paquets & services"],
+      ["sudo apt update && sudo apt upgrade -y", "Mettre à jour le système"],
+      ["sudo apt install paquet", "Installer un paquet"],
+      ["systemctl status service", "État d'un service"],
+      ["sudo systemctl restart service", "Redémarrer un service"],
+      ["sudo systemctl enable --now service", "Activer au démarrage et lancer"],
+      ["journalctl -u service -f", "Logs d'un service"],
+      ["# Système & réseau"],
+      ["ip a", "Voir les adresses IP"],
+      ["ip r", "Voir la table de routage"],
+      ["ss -tulpn", "Ports en écoute"],
+      ["ping -c 4 8.8.8.8", "Tester la connectivité"],
+      ["dig google.com", "Tester la résolution DNS"],
+      ["sudo nano /etc/network/interfaces", "Configurer une IP fixe (Debian)"],
+      ["df -h / free -h", "Espace disque / mémoire"],
+      ["htop", "Processus en temps réel"],
+      ["sudo ufw allow 22/tcp", "Ouvrir un port dans le pare-feu UFW"],
+      ["tar -czvf archive.tar.gz dossier", "Compresser un dossier"],
+      ["scp fichier user@ip:/chemin", "Copier un fichier vers un serveur"],
+    ],
+    windows: [
+      ["# CMD"],
+      ["ipconfig /all", "Configuration IP complète"],
+      ["ipconfig /release & ipconfig /renew", "Renouveler l'adresse DHCP"],
+      ["ipconfig /flushdns", "Vider le cache DNS"],
+      ["ping -t 8.8.8.8", "Ping continu"],
+      ["tracert google.com", "Tracer la route"],
+      ["nslookup google.com", "Tester le DNS"],
+      ["netstat -ano", "Connexions et ports ouverts (avec PID)"],
+      ["gpupdate /force", "Appliquer les GPO immédiatement"],
+      ["gpresult /r", "Voir les GPO appliquées"],
+      ["sfc /scannow", "Réparer les fichiers système"],
+      ["DISM /Online /Cleanup-Image /RestoreHealth", "Réparer l'image Windows"],
+      ["whoami /groups", "Mes groupes"],
+      ["net user nom /domain", "Infos sur un compte du domaine"],
+      ["shutdown /r /t 0", "Redémarrer immédiatement"],
+      ["# PowerShell"],
+      ["Get-NetIPAddress", "Adresses IP"],
+      ["New-NetIPAddress -InterfaceAlias Ethernet -IPAddress 192.168.1.10 -PrefixLength 24 -DefaultGateway 192.168.1.1", "Définir une IP fixe"],
+      ["Set-DnsClientServerAddress -InterfaceAlias Ethernet -ServerAddresses 192.168.1.1", "Définir le DNS"],
+      ["Test-NetConnection srv -Port 443", "Tester un port distant"],
+      ["Rename-Computer -NewName SRV01 -Restart", "Renommer la machine"],
+      ["Get-Service | Where Status -eq Running", "Services en cours"],
+      ["Restart-Service nom", "Redémarrer un service"],
+      ["Get-ADUser -Filter * | Select Name", "Lister les utilisateurs AD"],
+      ["Unlock-ADAccount -Identity jdupont", "Déverrouiller un compte AD"],
+      ["Set-ADAccountPassword jdupont -Reset", "Réinitialiser un mot de passe AD"],
+      ["Get-WindowsFeature | Where Installed", "Rôles installés"],
+      ["Get-EventLog -LogName System -Newest 20", "Derniers événements système"],
+    ],
+    reseau: [
+      ["# Cisco IOS — bases"],
+      ["enable", "Passer en mode privilégié"],
+      ["configure terminal", "Entrer en mode configuration"],
+      ["hostname SW1", "Nommer l'équipement"],
+      ["show running-config", "Configuration en cours"],
+      ["copy running-config startup-config", "Sauvegarder la configuration"],
+      ["show ip interface brief", "Résumé des interfaces"],
+      ["# VLAN"],
+      ["vlan 10\\n name COMPTA", "Créer un VLAN"],
+      ["interface fa0/1\\n switchport mode access\\n switchport access vlan 10", "Port en mode accès"],
+      ["interface gi0/1\\n switchport mode trunk", "Port en mode trunk"],
+      ["show vlan brief", "Lister les VLAN"],
+      ["# Routage"],
+      ["ip route 0.0.0.0 0.0.0.0 192.168.1.254", "Route par défaut"],
+      ["interface gi0/0.10\\n encapsulation dot1Q 10\\n ip address 10.0.10.254 255.255.255.0", "Sous-interface (router-on-a-stick)"],
+      ["show ip route", "Table de routage"],
+      ["# Mémo sous-réseaux"],
+      ["/24 = 255.255.255.0", "254 hôtes"],
+      ["/25 = 255.255.255.128", "126 hôtes"],
+      ["/26 = 255.255.255.192", "62 hôtes"],
+      ["/27 = 255.255.255.224", "30 hôtes"],
+      ["/28 = 255.255.255.240", "14 hôtes"],
+      ["/30 = 255.255.255.252", "2 hôtes (liaison point à point)"],
+    ],
+    docker: [
+      ["docker ps -a", "Lister tous les conteneurs"],
+      ["docker images", "Lister les images"],
+      ["docker run -d -p 8080:80 --name web nginx", "Lancer un conteneur"],
+      ["docker exec -it web bash", "Ouvrir un terminal dans un conteneur"],
+      ["docker logs -f web", "Suivre les logs"],
+      ["docker stop web && docker rm web", "Arrêter et supprimer"],
+      ["docker compose up -d", "Démarrer une stack Compose"],
+      ["docker compose down", "Arrêter la stack"],
+      ["docker compose up -d --build", "Reconstruire et redémarrer"],
+      ["docker compose ps", "État des services"],
+      ["docker network ls", "Lister les réseaux"],
+      ["docker volume ls", "Lister les volumes"],
+      ["docker system prune -a", "Nettoyer tout ce qui est inutilisé"],
+    ],
+    git: [
+      ["git clone URL", "Récupérer un dépôt"],
+      ["git status", "Voir les changements"],
+      ["git add .", "Préparer tous les fichiers"],
+      ["git commit -m \"message\"", "Enregistrer une version"],
+      ["git push", "Envoyer sur GitHub"],
+      ["git pull", "Récupérer les changements"],
+      ["git checkout -b ma-branche", "Créer une branche"],
+      ["git log --oneline --graph", "Historique compact"],
+      ["git diff", "Voir les différences"],
+    ],
+  };
+
+  // Construction des tableaux
+  document.querySelectorAll("table[data-src]").forEach(t => {
+    const rows = CMDS[t.dataset.src].map(r =>
+      r.length === 1
+        ? `<tr class="cat-row"><td colspan="2">${r[0].slice(2)}</td></tr>`
+        : `<tr><td><button class="cmd" data-cmd="${r[0].replace(/"/g, "&quot;")}">${r[0].split("\\n")[0]}${r[0].includes("\\n") ? " …" : ""}</button></td><td>${r[1]}</td></tr>`
+    ).join("");
+    t.innerHTML = `<thead><tr><th>Commande</th><th>Description</th></tr></thead><tbody>${rows}</tbody>`;
+  });
+
+  // Copier une commande au clic
+  document.addEventListener("click", e => {
+    const b = e.target.closest(".cmd");
+    if (!b) return;
+    navigator.clipboard.writeText(b.dataset.cmd.replace(/\\n/g, "\n")).then(() => {
+      b.classList.add("copied");
+      setTimeout(() => b.classList.remove("copied"), 1200);
+    });
+  });
+
+  // Recherche instantanée
+  const search = document.getElementById("search");
+  search.addEventListener("input", () => {
+    const q = search.value.toLowerCase().trim();
+    let hits = 0;
+    document.querySelectorAll(".cmd-table tbody tr:not(.cat-row)").forEach(tr => {
+      const ok = !q || tr.textContent.toLowerCase().includes(q) || tr.querySelector(".cmd").dataset.cmd.toLowerCase().includes(q);
+      tr.classList.toggle("hidden-by-search", !ok);
+      if (ok) hits++;
+    });
+    document.querySelectorAll(".cat-row").forEach(tr => tr.classList.toggle("hidden-by-search", !!q));
+    document.querySelectorAll(".res-section").forEach(s => {
+      if (s.id === "guides") return;
+      s.classList.toggle("hidden-by-search", !!q && !s.querySelector("tbody tr:not(.cat-row):not(.hidden-by-search)"));
+    });
+    document.querySelectorAll("details.guide").forEach(d => {
+      const ok = !q || d.textContent.toLowerCase().includes(q);
+      d.classList.toggle("hidden-by-search", !ok);
+      if (ok) hits++;
+    });
+    document.getElementById("empty").hidden = hits > 0;
+  });
+
+  // Surligner la section active dans le sommaire
+  const links = document.querySelectorAll("#toc a");
+  const io = new IntersectionObserver(es => es.forEach(e => {
+    if (e.isIntersecting) links.forEach(a => a.classList.toggle("active", a.getAttribute("href") === "#" + e.target.id));
+  }), { rootMargin: "-40% 0px -55% 0px" });
+  document.querySelectorAll(".res-section").forEach(s => io.observe(s));
+</script>
+</body>
+</html>

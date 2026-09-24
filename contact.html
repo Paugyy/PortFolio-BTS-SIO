@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">Contact</span>
+    <h1 class="title-xl reveal d1">Travaillons <span class="grad">ensemble</span></h1>
+    <p class="lead reveal d2">Une question, une proposition de stage ou d'alternance ? Écris-moi, je réponds rapidement.</p>
+  </header>
+
+  <section style="padding-top:10px">
+    <div class="container contact-grid">
+      <div class="card reveal">
+        <h3>Mes coordonnées</h3>
+        <div class="contact-item"><div class="icon-badge">✉️</div><div><small>E-mail</small><a href="mailto:yapaugy@gmail.com">yapaugy@gmail.com</a></div></div>
+        <div class="contact-item"><div class="icon-badge">📱</div><div><small>Téléphone</small><span>06 XX XX XX XX</span></div></div>
+        <div class="contact-item"><div class="icon-badge">📍</div><div><small>Localisation</small><span>[Ville], France</span></div></div>
+        <div class="contact-item"><div class="icon-badge">🐙</div><div><small>GitHub</small><a href="https://github.com/Paugyy" target="_blank" rel="noopener">github.com/Paugyy</a></div></div>
+        <div class="contact-item"><div class="icon-badge">💼</div><div><small>LinkedIn</small><a href="https://www.linkedin.com/in/A-COMPLETER" target="_blank" rel="noopener">linkedin.com/in/[profil]</a></div></div>
+      </div>
+
+      <div class="card reveal d1">
+        <h3>Envoyer un message</h3>
+        <!-- Le formulaire est envoyé par FormSubmit.co directement dans la boîte mail -->
+        <form id="contact-form">
+          <div class="form-row">
+            <div class="field"><label for="name">Nom</label><input id="name" name="name" required placeholder="Jean Dupont"></div>
+            <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" required placeholder="jean@exemple.fr"></div>
+          </div>
+          <div class="field">
+            <label for="subject">Objet</label>
+            <select id="subject" name="_subject">
+              <option>Proposition de stage / alternance</option>
+              <option>Question sur un projet</option>
+              <option>Autre</option>
+            </select>
+          </div>
+          <div class="field"><label for="message">Message</label><textarea id="message" name="message" required placeholder="Bonjour Yannis, …"></textarea></div>
+          <input class="honey" type="text" name="_honey" tabindex="-1" autocomplete="off">
+          <button class="btn btn-grad" type="submit" id="send">Envoyer le message ✈️</button>
+          <p class="form-status" id="status" role="status"></p>
+        </form>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="assets/js/main.js"></script>
+<script>
+  const form = document.getElementById("contact-form");
+  const status = document.getElementById("status");
+  const btn = document.getElementById("send");
+
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = "Envoi en cours…";
+    status.className = "form-status";
+    status.textContent = "";
+    try {
+      const data = Object.fromEntries(new FormData(form));
+      data._template = "table";
+      data._captcha = "false";
+      const res = await fetch("https://formsubmit.co/ajax/yapaugy@gmail.com", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (!res.ok || json.success === "false") throw new Error(json.message);
+      status.classList.add("ok");
+      status.textContent = "✅ Message envoyé ! Je te réponds au plus vite.";
+      form.reset();
+    } catch (err) {
+      status.classList.add("err");
+      status.textContent = "❌ L'envoi a échoué. Écris-moi directement à yapaugy@gmail.com.";
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Envoyer le message ✈️";
+    }
+  });
+</script>
+</body>
+</html>

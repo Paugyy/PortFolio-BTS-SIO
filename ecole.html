@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Projets école — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">BTS SIO</span>
+    <h1 class="title-xl reveal d1">Projets <span class="grad">école</span></h1>
+    <p class="lead reveal d2">Les travaux pratiques, AP et projets réalisés pendant ma formation BTS SIO option SISR.</p>
+  </header>
+  <section style="padding-top:20px">
+    <div class="container">
+      <div class="filters reveal" id="filters"></div>
+      <div class="grid grid-3" id="projects"></div>
+    </div>
+  </section>
+</main>
+
+<div class="modal" id="modal">
+  <div class="modal-box"><button class="modal-close" aria-label="Fermer">✕</button><div class="modal-content"></div></div>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/main.js"></script>
+<script>renderProjects(PROJECTS_ECOLE, "projects");</script>
+</body>
+</html>
