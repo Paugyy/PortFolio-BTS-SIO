@@ -9,7 +9,7 @@ const SITE = {
   name: "Yannis Paugy",
   initials: "YP",
   github: "https://github.com/Paugyy",
-  linkedin: "https://www.linkedin.com/in/A-COMPLETER",
+  linkedin: "", // mettre le lien LinkedIn ici quand il existera
   email: "yapaugy@gmail.com",
 };
 
@@ -52,7 +52,7 @@ function buildLayout() {
   footer.innerHTML = `
     <div class="socials">
       <a href="${SITE.github}" target="_blank" rel="noopener">GitHub</a>
-      <a href="${SITE.linkedin}" target="_blank" rel="noopener">LinkedIn</a>
+      ${SITE.linkedin ? `<a href="${SITE.linkedin}" target="_blank" rel="noopener">LinkedIn</a>` : ""}
       <a href="contact.html">Contact</a>
     </div>
     © ${new Date().getFullYear()} ${SITE.name} — Portfolio BTS SIO`;
