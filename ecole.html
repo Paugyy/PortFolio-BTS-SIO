@@ -2,11 +2,13 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Projets école — Yannis Paugy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/style.css?v=202609241517">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202609241930">
 </head>
 <body>
 <main>
@@ -14,7 +16,7 @@
     <span class="eyebrow reveal">BTS SIO</span>
     <h1 class="title-xl reveal d1">Projets <span class="grad">école</span></h1>
     <p class="lead reveal d2">Les travaux pratiques, AP et projets réalisés pendant ma formation BTS SIO option SISR.</p>
-    <div class="org-strip reveal d2"><img class="org-logo lg" src="assets/img/logo-mydigitalschool.svg" alt="Logo MyDigitalSchool" loading="lazy"><img class="org-logo lg" src="assets/img/logo-jeanrostand.png" alt="Logo Lycée Jean Rostand" loading="lazy"></div>
+    <div class="org-strip reveal d2"><img class="org-logo lg" src="/assets/img/logo-mydigitalschool.svg" alt="Logo MyDigitalSchool" loading="lazy"><img class="org-logo lg" src="/assets/img/logo-jeanrostand.png" alt="Logo Lycée Jean Rostand" loading="lazy"></div>
   </header>
   <section style="padding-top:20px">
     <div class="container">
@@ -28,8 +30,8 @@
   <div class="modal-box"><button class="modal-close" aria-label="Fermer">✕</button><div class="modal-content"></div></div>
 </div>
 
-<script src="assets/js/data.js?v=202609241517"></script>
-<script src="assets/js/main.js?v=202609241517"></script>
-<script>renderProjects(PROJECTS_ECOLE, "projects");</script>
+<script src="/assets/js/data.js?v=202609241930"></script>
+<script src="/assets/js/main.js?v=202609241930"></script>
+<script src="/assets/js/page-ecole.js?v=202609241930"></script>
 </body>
 </html>

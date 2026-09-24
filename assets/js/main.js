@@ -14,17 +14,38 @@ const SITE = {
 };
 
 const PAGES = [
-  { href: "index.html", label: "Accueil" },
-  { href: "entreprise.html", label: "Projets entreprise" },
-  { href: "ecole.html", label: "Projets école" },
-  { href: "ressources.html", label: "Ressources" },
-  { href: "cv.html", label: "CV" },
-  { href: "contact.html", label: "Contact" },
+  { href: "/", label: "Accueil" },
+  { href: "/entreprise", label: "Projets entreprise" },
+  { href: "/ecole", label: "Projets école" },
+  { href: "/ressources", label: "Ressources" },
+  { href: "/cv", label: "CV" },
+  { href: "/contact", label: "Contact" },
 ];
+
+/* ---------- 0. Sécurité & URLs propres ---------- */
+// "/cv.html", "/cv/" ou "/index.html" -> "/cv" ou "/"
+function cleanPath(path) {
+  const name = (path.split("/").filter(Boolean).pop() || "").replace(/\.html$/, "");
+  return name === "index" ? "/" : "/" + name;
+}
+
+function initSecurity() {
+  // Anti-clickjacking : le site refuse d'être affiché dans une <iframe> d'un autre site
+  if (window.top !== window.self) {
+    try { window.top.location = window.self.location; } catch { document.documentElement.hidden = true; }
+  }
+  // Masque ".html" dans la barre d'adresse (sans recharger la page)
+  const clean = cleanPath(location.pathname);
+  if (clean !== location.pathname) history.replaceState(null, "", clean + location.search + location.hash);
+  // Liens externes : on ne transmet ni la page d'origine ni l'accès à window.opener
+  document.querySelectorAll('a[target="_blank"]').forEach(a => (a.rel = "noopener noreferrer"));
+  // Bouton "Imprimer" du CV (remplace l'ancien onclick bloqué par la CSP)
+  document.querySelectorAll("[data-print]").forEach(b => b.addEventListener("click", () => window.print()));
+}
 
 /* ---------- 1. Menu + fond + footer (un seul endroit à modifier) ---------- */
 function buildLayout() {
-  const current = location.pathname.split("/").pop() || "index.html";
+  const current = cleanPath(location.pathname);
 
   const bg = document.createElement("div");
   bg.className = "bg";
@@ -39,7 +60,7 @@ function buildLayout() {
   nav.className = "nav";
   nav.innerHTML = `
     <div class="nav-inner">
-      <a class="brand" href="index.html"><span class="logo">${SITE.initials}</span>${SITE.name}</a>
+      <a class="brand" href="/"><span class="logo">${SITE.initials}</span>${SITE.name}</a>
       <button class="burger" aria-label="Ouvrir le menu"><span></span></button>
       <ul class="nav-links">
         ${PAGES.map(p => `<li><a href="${p.href}" class="${p.href === current ? "active" : ""}">${p.label}</a></li>`).join("")}
@@ -51,9 +72,9 @@ function buildLayout() {
   const footer = document.createElement("footer");
   footer.innerHTML = `
     <div class="socials">
-      <a href="${SITE.github}" target="_blank" rel="noopener">GitHub</a>
-      ${SITE.linkedin ? `<a href="${SITE.linkedin}" target="_blank" rel="noopener">LinkedIn</a>` : ""}
-      <a href="contact.html">Contact</a>
+      <a href="${SITE.github}" target="_blank" rel="noopener noreferrer">GitHub</a>
+      ${SITE.linkedin ? `<a href="${SITE.linkedin}" target="_blank" rel="noopener noreferrer">LinkedIn</a>` : ""}
+      <a href="/contact">Contact</a>
     </div>
     © ${new Date().getFullYear()} ${SITE.name} — Portfolio BTS SIO`;
   document.body.appendChild(footer);
@@ -223,7 +244,7 @@ function renderProjects(list, gridId) {
       <h4>🛠️ Ce que j'ai réalisé</h4><ul>${p.tasks.map(o => `<li>${o}</li>`).join("")}</ul>
       ${p.skills ? `<h4>📚 Compétences BTS SIO mobilisées</h4><ul>${p.skills.map(o => `<li>${o}</li>`).join("")}</ul>` : ""}
       <div class="tags">${p.tags.map((t, k) => `<span class="tag ${tagColors[k % 4]}">${t}</span>`).join("")}</div>
-      ${p.link ? `<div class="btn-row" style="justify-content:flex-start"><a class="btn btn-primary" href="${p.link}" target="_blank" rel="noopener">${p.linkLabel || "Voir le projet"} ↗</a></div>` : ""}`;
+      ${p.link ? `<div class="btn-row" style="justify-content:flex-start"><a class="btn btn-primary" href="${p.link}" target="_blank" rel="noopener noreferrer">${p.linkLabel || "Voir le projet"} ↗</a></div>` : ""}`;
     modal.classList.add("open");
   });
   const close = () => modal.classList.remove("open");
@@ -233,6 +254,7 @@ function renderProjects(list, gridId) {
 
 document.addEventListener("DOMContentLoaded", () => {
   buildLayout();
+  initSecurity();
   initReveal();
   initCounters();
   initParticles();

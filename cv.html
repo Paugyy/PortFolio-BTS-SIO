@@ -2,11 +2,13 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CV — Yannis Paugy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/style.css?v=202609241517">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202609241930">
 </head>
 <body>
 <main>
@@ -14,8 +16,8 @@
     <span class="eyebrow reveal">Curriculum Vitae</span>
     <h1 class="title-xl reveal d1">Mon <span class="grad">CV</span></h1>
     <div class="btn-row reveal d2 no-print">
-      <button class="btn btn-primary" onclick="window.print()">🖨️ Imprimer / Enregistrer en PDF</button>
-      <a class="btn btn-ghost" href="contact.html">Me contacter</a>
+      <button class="btn btn-primary" data-print>🖨️ Imprimer / Enregistrer en PDF</button>
+      <a class="btn btn-ghost" href="/contact">Me contacter</a>
     </div>
   </header>
 
@@ -75,7 +77,7 @@
           <p style="color:var(--text-soft)">Étudiant en BTS SIO option SISR en alternance, après une première année en option SLAM (développement). Passionné par l'infrastructure et la cybersécurité. J'aime comprendre comment les choses fonctionnent, les automatiser et les documenter. Je recherche [une poursuite d'études / un poste] en administration systèmes et réseaux.</p>
 
           <h3>Expérience</h3>
-          <div class="cv-entry with-logo"><img class="cv-logo" src="assets/img/logo-santebtp.png" alt="Logo Santé BTP Normandie" loading="lazy"><div class="cv-entry-body">
+          <div class="cv-entry with-logo"><img class="cv-logo" src="/assets/img/logo-santebtp.png" alt="Logo Santé BTP Normandie" loading="lazy"><div class="cv-entry-body">
             <div class="top"><strong>Alternant informatique &amp; téléphonie</strong><span class="when">2025 — aujourd'hui</span></div>
             <div class="where">Santé BTP Normandie</div>
             <ul>
@@ -94,13 +96,13 @@
           </div>
 
           <h3>Formation</h3>
-          <div class="cv-entry with-logo"><img class="cv-logo" src="assets/img/logo-mydigitalschool.svg" alt="Logo MyDigitalSchool" loading="lazy"><div class="cv-entry-body">
+          <div class="cv-entry with-logo"><img class="cv-logo" src="/assets/img/logo-mydigitalschool.svg" alt="Logo MyDigitalSchool" loading="lazy"><div class="cv-entry-body">
             <div class="top"><strong>BTS SIO — option SISR (alternance)</strong><span class="when">2025 — 2027</span></div>
             <div class="where">MyDigitalSchool · Caen</div>
             <ul><li>Administration Windows / Linux, réseaux, cybersécurité, virtualisation</li></ul>
             </div>
           </div>
-          <div class="cv-entry with-logo"><img class="cv-logo" src="assets/img/logo-jeanrostand.png" alt="Logo Lycée Jean Rostand" loading="lazy"><div class="cv-entry-body">
+          <div class="cv-entry with-logo"><img class="cv-logo" src="/assets/img/logo-jeanrostand.png" alt="Logo Lycée Jean Rostand" loading="lazy"><div class="cv-entry-body">
             <div class="top"><strong>BTS SIO — option SLAM (1ère année)</strong><span class="when">2023 — 2024</span></div>
             <div class="where">Lycée Jean Rostand · Caen</div>
             <ul><li>Développement web, programmation, bases de données (SQL) — puis réorientation vers SISR</li></ul>
@@ -161,6 +163,6 @@
     </div>
   </section>
 </main>
-<script src="assets/js/main.js?v=202609241517"></script>
+<script src="/assets/js/main.js?v=202609241930"></script>
 </body>
 </html>

@@ -2,12 +2,14 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Yannis Paugy — Portfolio BTS SIO</title>
   <meta name="description" content="Portfolio BTS SIO de Yannis Paugy : projets en entreprise, projets école, ressources systèmes et réseaux, CV et contact.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/style.css?v=202609241517">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202609241930">
 </head>
 <body>
 <main>
@@ -21,9 +23,9 @@
       <p class="lead reveal d2">Étudiant en BTS Services Informatiques aux Organisations, en alternance. Je conçois, sécurise et automatise des infrastructures — du pare-feu au conteneur Docker.</p>
       <p class="typed reveal d2" id="typed"></p>
       <div class="btn-row reveal d3">
-        <a class="btn btn-primary" href="entreprise.html">Voir mes projets</a>
-        <a class="btn btn-ghost" href="cv.html">Mon CV</a>
-        <a class="btn btn-ghost" href="contact.html">Me contacter</a>
+        <a class="btn btn-primary" href="/entreprise">Voir mes projets</a>
+        <a class="btn btn-ghost" href="/cv">Mon CV</a>
+        <a class="btn btn-ghost" href="/contact">Me contacter</a>
       </div>
     </div>
   </section>
@@ -49,7 +51,7 @@
         <p style="color:var(--text-soft)">Après une première année de BTS SIO en option SLAM (développement) au lycée Jean Rostand, je me suis réorienté vers l'option SISR (Solutions d'Infrastructure, Systèmes et Réseaux) : j'ai donc un double regard, développeur et administrateur. Je suis en alternance chez Santé BTP Normandie, au service informatique et téléphonie. À l'école, je mène des projets concrets comme DataBridge : virtualisation sous Proxmox, conteneurisation Docker, services web et bases de données.</p>
         <p style="color:var(--text-soft)">Ce portfolio regroupe tout ce que j'ai appris et réalisé : projets d'entreprise, travaux pratiques de l'école, et une bibliothèque de ressources (commandes, procédures) que j'utilise au quotidien.</p>
         <div class="btn-row" style="justify-content:flex-start">
-          <a class="btn btn-grad" href="ressources.html">Mes ressources techniques →</a>
+          <a class="btn btn-grad" href="/ressources">Mes ressources techniques →</a>
         </div>
       </div>
       <div class="card reveal d1">
@@ -80,9 +82,9 @@
         <h2 class="title-lg">Mon parcours</h2>
       </div>
       <div class="timeline" style="margin-top:40px">
-        <div class="tl-item reveal"><img class="org-logo" src="assets/img/logo-mydigitalschool.svg" alt="Logo MyDigitalSchool" loading="lazy"><div class="tl-date">2025 — 2027</div><h4>BTS SIO option SISR — en alternance</h4><p>MyDigitalSchool Caen · Administration systèmes &amp; réseaux, cybersécurité, virtualisation.</p></div>
-        <div class="tl-item reveal d1"><img class="org-logo" src="assets/img/logo-santebtp.png" alt="Logo Santé BTP Normandie" loading="lazy"><div class="tl-date">2025 — aujourd'hui</div><h4>Alternant informatique &amp; téléphonie</h4><p>Santé BTP Normandie · EDR HarfangLab, NinjaOne, téléphonie Teams, Cisco Meraki.</p></div>
-        <div class="tl-item reveal d2"><img class="org-logo" src="assets/img/logo-jeanrostand.png" alt="Logo Lycée Jean Rostand" loading="lazy"><div class="tl-date">2023 — 2024</div><h4>1ère année BTS SIO option SLAM</h4><p>Lycée Jean Rostand, Caen · Développement d’applications (web, bases de données, programmation). Réorientation vers l’option SISR pour me spécialiser en infrastructure.</p></div>
+        <div class="tl-item reveal"><img class="org-logo" src="/assets/img/logo-mydigitalschool.svg" alt="Logo MyDigitalSchool" loading="lazy"><div class="tl-date">2025 — 2027</div><h4>BTS SIO option SISR — en alternance</h4><p>MyDigitalSchool Caen · Administration systèmes &amp; réseaux, cybersécurité, virtualisation.</p></div>
+        <div class="tl-item reveal d1"><img class="org-logo" src="/assets/img/logo-santebtp.png" alt="Logo Santé BTP Normandie" loading="lazy"><div class="tl-date">2025 — aujourd'hui</div><h4>Alternant informatique &amp; téléphonie</h4><p>Santé BTP Normandie · EDR HarfangLab, NinjaOne, téléphonie Teams, Cisco Meraki.</p></div>
+        <div class="tl-item reveal d2"><img class="org-logo" src="/assets/img/logo-jeanrostand.png" alt="Logo Lycée Jean Rostand" loading="lazy"><div class="tl-date">2023 — 2024</div><h4>1ère année BTS SIO option SLAM</h4><p>Lycée Jean Rostand, Caen · Développement d’applications (web, bases de données, programmation). Réorientation vers l’option SISR pour me spécialiser en infrastructure.</p></div>
         <div class="tl-item reveal d3"><div class="tl-date">2023</div><h4>Baccalauréat STI2D</h4><p>Sciences et Technologies de l’Industrie et du Développement Durable.</p></div>
       </div>
     </div>
@@ -114,34 +116,16 @@
         <h2 class="title-lg">Tout mon travail, <span class="grad">au même endroit</span></h2>
       </div>
       <div class="grid grid-3">
-        <a class="card reveal" href="entreprise.html" style="color:inherit;text-decoration:none"><div class="icon-badge">🏢</div><h3>Projets entreprise</h3><p style="color:var(--text-soft)">Les missions réalisées pendant mon alternance.</p></a>
-        <a class="card reveal d1" href="ecole.html" style="color:inherit;text-decoration:none"><div class="icon-badge">🎓</div><h3>Projets école</h3><p style="color:var(--text-soft)">TP, AP et projets réalisés en BTS SIO.</p></a>
-        <a class="card reveal d2" href="ressources.html" style="color:inherit;text-decoration:none"><div class="icon-badge">📚</div><h3>Ressources</h3><p style="color:var(--text-soft)">Commandes Linux / Windows et procédures d'installation.</p></a>
+        <a class="card reveal" href="/entreprise" style="color:inherit;text-decoration:none"><div class="icon-badge">🏢</div><h3>Projets entreprise</h3><p style="color:var(--text-soft)">Les missions réalisées pendant mon alternance.</p></a>
+        <a class="card reveal d1" href="/ecole" style="color:inherit;text-decoration:none"><div class="icon-badge">🎓</div><h3>Projets école</h3><p style="color:var(--text-soft)">TP, AP et projets réalisés en BTS SIO.</p></a>
+        <a class="card reveal d2" href="/ressources" style="color:inherit;text-decoration:none"><div class="icon-badge">📚</div><h3>Ressources</h3><p style="color:var(--text-soft)">Commandes Linux / Windows et procédures d'installation.</p></a>
       </div>
     </div>
   </section>
 
 </main>
 
-<script src="assets/js/main.js?v=202609241517"></script>
-<script>
-  // Texte "tapé à la machine" dans le hero
-  const words = ["$ sudo apt install passion", "> Get-ADUser -Filter *", "# pfctl -s rules", "$ docker compose up -d"];
-  const typed = document.getElementById("typed");
-  let wi = 0, ci = 0, del = false;
-  (function type() {
-    const w = words[wi];
-    typed.textContent = w.slice(0, ci);
-    if (!del && ci < w.length) ci++;
-    else if (del && ci > 0) ci--;
-    else if (!del) { del = true; return setTimeout(type, 1600); }
-    else { del = false; wi = (wi + 1) % words.length; }
-    setTimeout(type, del ? 35 : 70);
-  })();
-
-  // Bandeau de technos (dupliqué pour une boucle infinie)
-  const techs = ["🐧 Linux", "🪟 Windows Server", "🔥 pfSense", "🖥️ Proxmox", "🐳 Docker", "🗂️ Active Directory", "🌐 Nginx", "🐘 PostgreSQL", "🔐 VPN", "🧭 Guacamole", "📦 Git / GitHub", "⚡ PowerShell", "🐚 Bash", "📡 Cisco", "🎫 GLPI", "☎️ Téléphonie Teams", "🛡️ HarfangLab EDR", "🥷 NinjaOne", "📶 Cisco Meraki", "💚 Vue.js"];
-  document.getElementById("marquee").innerHTML = [...techs, ...techs].map(t => `<span>${t}</span>`).join("");
-</script>
+<script src="/assets/js/main.js?v=202609241930"></script>
+<script src="/assets/js/page-index.js?v=202609241930"></script>
 </body>
 </html>

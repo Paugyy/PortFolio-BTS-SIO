@@ -2,11 +2,13 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Contact — Yannis Paugy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/style.css?v=202609241517">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202609241930">
 </head>
 <body>
 <main>
@@ -52,40 +54,7 @@
   </section>
 </main>
 
-<script src="assets/js/main.js?v=202609241517"></script>
-<script>
-  const form = document.getElementById("contact-form");
-  const status = document.getElementById("status");
-  const btn = document.getElementById("send");
-
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    btn.disabled = true;
-    btn.textContent = "Envoi en cours…";
-    status.className = "form-status";
-    status.textContent = "";
-    try {
-      const data = Object.fromEntries(new FormData(form));
-      data._template = "table";
-      data._captcha = "false";
-      const res = await fetch("https://formsubmit.co/ajax/yapaugy@gmail.com", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify(data),
-      });
-      const json = await res.json();
-      if (!res.ok || json.success === "false") throw new Error(json.message);
-      status.classList.add("ok");
-      status.textContent = "✅ Message envoyé ! Je te réponds au plus vite.";
-      form.reset();
-    } catch (err) {
-      status.classList.add("err");
-      status.textContent = "❌ L'envoi a échoué. Écris-moi directement à yapaugy@gmail.com.";
-    } finally {
-      btn.disabled = false;
-      btn.textContent = "Envoyer le message ✈️";
-    }
-  });
-</script>
+<script src="/assets/js/main.js?v=202609241930"></script>
+<script src="/assets/js/page-contact.js?v=202609241930"></script>
 </body>
 </html>
