@@ -746,3 +746,15 @@ footer .socials { display: flex; justify-content: center; gap: 18px; margin-bott
 .cert-info { flex: 1; min-width: 220px; }
 .cert-info h3 { font-size: 1.4rem; margin-bottom: 4px; }
 .cert-info p { color: var(--text-soft); margin-bottom: 14px; }
+
+/* Badge "Projet principal" */
+.featured {
+  align-self: flex-start;
+  font-size: .72rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+  color: #fff;
+  background: var(--gradient);
+}

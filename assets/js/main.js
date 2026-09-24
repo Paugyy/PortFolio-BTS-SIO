@@ -192,6 +192,7 @@ function renderProjects(list, gridId) {
       <article class="card project reveal visible" data-id="${list.indexOf(p)}" style="animation-delay:${i * 60}ms">
         <div class="cover" style="background:${p.color}">${p.icon}</div>
         <div class="meta">${p.category} · ${p.date}</div>
+        ${p.featured ? `<span class="featured">⭐ Projet principal</span>` : ""}
         <h3>${p.title}</h3>
         <p>${p.summary}</p>
         <div class="tags">${p.tags.map((t, k) => `<span class="tag ${tagColors[k % 4]}">${t}</span>`).join("")}</div>

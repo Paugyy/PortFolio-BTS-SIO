@@ -10,6 +10,7 @@
    - description / objectives / tasks / skills : affichés dans la fenêtre de détail
    - tags : technologies
    - link : lien GitHub ou autre (optionnel, mettre "" sinon)
+   - featured: true : affiche le badge « ⭐ Projet principal »
    ========================================================= */
 
 const COLORS = {
@@ -24,6 +25,7 @@ const COLORS = {
 /* ---------------- PROJETS ENTREPRISE ---------------- */
 const PROJECTS_ENTREPRISE = [
   {
+    featured: true, // ⭐ projet principal
     title: "HarfangLab EDR — Déploiement et supervision",
     date: "En cours",
     category: "Cybersécurité",
@@ -47,6 +49,30 @@ const PROJECTS_ENTREPRISE = [
     link: "",
   },
   {
+    featured: true, // ⭐ projet principal
+    title: "Projet Cisco Meraki — Déploiement réseau",
+    date: "2025 — 2026",
+    category: "Réseau",
+    icon: "📡",
+    color: COLORS.amber,
+    summary: "Déploiement de l'infrastructure réseau Cisco Meraki de Santé BTP Normandie, gérée depuis le cloud.",
+    description: "Cisco Meraki est une gamme d'équipements réseau (switchs, bornes Wi-Fi, pare-feu) administrés entièrement depuis un tableau de bord dans le cloud. Cela permet de gérer tous les sites de l'entreprise depuis une seule interface.",
+    objectives: [
+      "Moderniser le réseau de l'entreprise",
+      "Centraliser l'administration de tous les sites",
+      "Sécuriser l'accès au réseau et au Wi-Fi",
+    ],
+    tasks: [
+      "Installation des équipements Meraki",
+      "Configuration depuis le dashboard Meraki (VLAN, Wi-Fi)",
+      "Tests de connectivité et mise en service",
+    ],
+    skills: ["Gérer le patrimoine informatique", "Sécuriser les équipements et les usages"],
+    tags: ["Cisco Meraki", "Réseau", "Wi-Fi", "VLAN"],
+    link: "",
+  },
+  {
+    featured: true, // ⭐ projet principal
     title: "Administration NinjaOne — Gestion de parc",
     date: "2025 — 2026",
     category: "Gestion de parc",
@@ -113,28 +139,6 @@ const PROJECTS_ENTREPRISE = [
     ],
     skills: ["Gérer le patrimoine informatique", "Répondre aux incidents et aux demandes d'assistance"],
     tags: ["FIM", "Matériel", "Support"],
-    link: "",
-  },
-  {
-    title: "Projet Cisco Meraki — Déploiement réseau",
-    date: "2025 — 2026",
-    category: "Réseau",
-    icon: "📡",
-    color: COLORS.amber,
-    summary: "Déploiement de l'infrastructure réseau Cisco Meraki de Santé BTP Normandie, gérée depuis le cloud.",
-    description: "Cisco Meraki est une gamme d'équipements réseau (switchs, bornes Wi-Fi, pare-feu) administrés entièrement depuis un tableau de bord dans le cloud. Cela permet de gérer tous les sites de l'entreprise depuis une seule interface.",
-    objectives: [
-      "Moderniser le réseau de l'entreprise",
-      "Centraliser l'administration de tous les sites",
-      "Sécuriser l'accès au réseau et au Wi-Fi",
-    ],
-    tasks: [
-      "Installation des équipements Meraki",
-      "Configuration depuis le dashboard Meraki (VLAN, Wi-Fi)",
-      "Tests de connectivité et mise en service",
-    ],
-    skills: ["Gérer le patrimoine informatique", "Sécuriser les équipements et les usages"],
-    tags: ["Cisco Meraki", "Réseau", "Wi-Fi", "VLAN"],
     link: "",
   },
   /* ➕ Ajoute tes autres missions d'entreprise ici (copie un bloc ci-dessus) */
