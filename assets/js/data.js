@@ -64,9 +64,10 @@ const PROJECTS_ENTREPRISE = [
       "Gestion des mises à jour Windows et logicielles",
       "Déploiement de logiciels et de scripts sur les postes",
       "Prise en main à distance pour le support utilisateurs",
+      "🏅 Obtention de la certification NinjaOne",
     ],
     skills: ["Gérer le patrimoine informatique", "Répondre aux incidents et aux demandes d'assistance"],
-    tags: ["NinjaOne", "RMM", "Patch management", "Support"],
+    tags: ["NinjaOne", "RMM", "Patch management", "Support", "Certifié"],
     link: "",
   },
   {
