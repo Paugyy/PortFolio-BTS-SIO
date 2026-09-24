@@ -7,7 +7,7 @@
   <meta name="description" content="Portfolio BTS SIO de Yannis Paugy : projets en entreprise, projets école, ressources systèmes et réseaux, CV et contact.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="assets/css/style.css?v=202609241506">
+  <link rel="stylesheet" href="assets/css/style.css?v=202609241517">
 </head>
 <body>
 <main>
@@ -25,18 +25,6 @@
         <a class="btn btn-ghost" href="cv.html">Mon CV</a>
         <a class="btn btn-ghost" href="contact.html">Me contacter</a>
       </div>
-      <div class="scroll-hint reveal d3">Défiler<div class="mouse"></div></div>
-    </div>
-  </section>
-
-  <!-- ===== SCROLLYTELLING (texte collé pendant le scroll, façon Apple) ===== -->
-  <section class="sticky-wrap" id="story">
-    <div class="sticky-stage">
-      <div class="line">Je <span class="grad">sécurise</span>.<small>Pare-feu pfSense, VLAN, VPN, segmentation réseau.</small></div>
-      <div class="line">J'<span class="grad">administre</span>.<small>Windows Server, Active Directory, Linux Debian, Proxmox.</small></div>
-      <div class="line">J'<span class="grad">automatise</span>.<small>Docker, scripts Bash &amp; PowerShell, Git.</small></div>
-      <div class="line">Je <span class="grad">documente</span>.<small>Chaque projet a sa procédure, reproductible par n'importe qui.</small></div>
-      <div class="progress-dots"><i></i><i></i><i></i><i></i></div>
     </div>
   </section>
 
@@ -92,9 +80,9 @@
         <h2 class="title-lg">Mon parcours</h2>
       </div>
       <div class="timeline" style="margin-top:40px">
-        <div class="tl-item reveal"><div class="tl-date">2025 — 2027</div><h4>BTS SIO option SISR — en alternance</h4><p>MyDigitalSchool Caen · Administration systèmes &amp; réseaux, cybersécurité, virtualisation.</p></div>
-        <div class="tl-item reveal d1"><div class="tl-date">2025 — aujourd'hui</div><h4>Alternant informatique &amp; téléphonie</h4><p>Santé BTP Normandie · EDR HarfangLab, NinjaOne, téléphonie Teams, Cisco Meraki.</p></div>
-        <div class="tl-item reveal d2"><div class="tl-date">2023 — 2024</div><h4>1ère année BTS SIO option SLAM</h4><p>Lycée Jean Rostand, Caen · Développement d’applications (web, bases de données, programmation). Réorientation vers l’option SISR pour me spécialiser en infrastructure.</p></div>
+        <div class="tl-item reveal"><img class="org-logo" src="assets/img/logo-mydigitalschool.svg" alt="Logo MyDigitalSchool" loading="lazy"><div class="tl-date">2025 — 2027</div><h4>BTS SIO option SISR — en alternance</h4><p>MyDigitalSchool Caen · Administration systèmes &amp; réseaux, cybersécurité, virtualisation.</p></div>
+        <div class="tl-item reveal d1"><img class="org-logo" src="assets/img/logo-santebtp.png" alt="Logo Santé BTP Normandie" loading="lazy"><div class="tl-date">2025 — aujourd'hui</div><h4>Alternant informatique &amp; téléphonie</h4><p>Santé BTP Normandie · EDR HarfangLab, NinjaOne, téléphonie Teams, Cisco Meraki.</p></div>
+        <div class="tl-item reveal d2"><img class="org-logo" src="assets/img/logo-jeanrostand.png" alt="Logo Lycée Jean Rostand" loading="lazy"><div class="tl-date">2023 — 2024</div><h4>1ère année BTS SIO option SLAM</h4><p>Lycée Jean Rostand, Caen · Développement d’applications (web, bases de données, programmation). Réorientation vers l’option SISR pour me spécialiser en infrastructure.</p></div>
         <div class="tl-item reveal d3"><div class="tl-date">2023</div><h4>Baccalauréat STI2D</h4><p>Sciences et Technologies de l’Industrie et du Développement Durable.</p></div>
       </div>
     </div>
@@ -135,7 +123,7 @@
 
 </main>
 
-<script src="assets/js/main.js?v=202609241506"></script>
+<script src="assets/js/main.js?v=202609241517"></script>
 <script>
   // Texte "tapé à la machine" dans le hero
   const words = ["$ sudo apt install passion", "> Get-ADUser -Filter *", "# pfctl -s rules", "$ docker compose up -d"];
@@ -154,20 +142,6 @@
   // Bandeau de technos (dupliqué pour une boucle infinie)
   const techs = ["🐧 Linux", "🪟 Windows Server", "🔥 pfSense", "🖥️ Proxmox", "🐳 Docker", "🗂️ Active Directory", "🌐 Nginx", "🐘 PostgreSQL", "🔐 VPN", "🧭 Guacamole", "📦 Git / GitHub", "⚡ PowerShell", "🐚 Bash", "📡 Cisco", "🎫 GLPI", "☎️ Téléphonie Teams", "🛡️ HarfangLab EDR", "🥷 NinjaOne", "📶 Cisco Meraki", "💚 Vue.js"];
   document.getElementById("marquee").innerHTML = [...techs, ...techs].map(t => `<span>${t}</span>`).join("");
-
-  // Scrollytelling : on affiche la phrase correspondant à la progression dans la section
-  const story = document.getElementById("story");
-  const lines = story.querySelectorAll(".line");
-  const dots = story.querySelectorAll(".progress-dots i");
-  function onScroll() {
-    const r = story.getBoundingClientRect();
-    const progress = Math.min(Math.max(-r.top / (r.height - innerHeight), 0), 0.999);
-    const idx = Math.floor(progress * lines.length);
-    lines.forEach((l, i) => l.classList.toggle("show", i === idx));
-    dots.forEach((d, i) => d.classList.toggle("on", i === idx));
-  }
-  addEventListener("scroll", onScroll, { passive: true });
-  onScroll();
 </script>
 </body>
 </html>

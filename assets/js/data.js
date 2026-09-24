@@ -14,12 +14,12 @@
    ========================================================= */
 
 const COLORS = {
-  indigo: "linear-gradient(135deg,#e0e7ff,#c7d2fe)",
-  cyan: "linear-gradient(135deg,#cffafe,#a5f3fc)",
-  pink: "linear-gradient(135deg,#fce7f3,#fbcfe8)",
-  amber: "linear-gradient(135deg,#fef3c7,#fde68a)",
-  green: "linear-gradient(135deg,#dcfce7,#bbf7d0)",
-  violet: "linear-gradient(135deg,#ede9fe,#ddd6fe)",
+  indigo: "linear-gradient(135deg,#dbeafe,#bfdbfe)",
+  cyan: "linear-gradient(135deg,#e0f2fe,#bae6fd)",
+  pink: "linear-gradient(135deg,#f1f5f9,#e2e8f0)",
+  amber: "linear-gradient(135deg,#e0e7ff,#c7d2fe)",
+  green: "linear-gradient(135deg,#ccfbf1,#99f6e4)",
+  violet: "linear-gradient(135deg,#eef2ff,#dbeafe)",
 };
 
 /* ---------------- PROJETS ENTREPRISE ---------------- */

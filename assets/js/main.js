@@ -99,7 +99,7 @@ function initParticles() {
   if (!canvas || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const ctx = canvas.getContext("2d");
   let w, h, dots, dpr;
-  const colors = ["79,70,229", "6,182,212", "244,114,182"];
+  const colors = ["30,58,138", "29,78,216", "2,132,199"];
 
   function resize() {
     dpr = Math.min(window.devicePixelRatio || 1, 2);
