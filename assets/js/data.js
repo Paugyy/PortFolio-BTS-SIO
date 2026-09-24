@@ -23,6 +23,11 @@ const COLORS = {
 
 /* ---------------- PROJETS ENTREPRISE ---------------- */
 const PROJECTS_ENTREPRISE = [
+  /* ➕ Ajoute tes autres missions d'entreprise ici (copie un bloc ci-dessus) */
+];
+
+/* ---------------- PROJETS ÉCOLE ---------------- */
+const PROJECTS_ECOLE = [
   {
     title: "DataBridge — plateforme d'import de données",
     date: "2026",
@@ -30,7 +35,7 @@ const PROJECTS_ENTREPRISE = [
     icon: "🌉",
     color: COLORS.indigo,
     summary: "Application web qui transforme les fichiers Excel/CSV des salariés en base PostgreSQL centralisée, déployée en conteneurs Docker.",
-    description: "Les salariés stockaient leurs données dans des classeurs Excel isolés. DataBridge leur permet d'importer ces fichiers via une interface web simple : les données sont automatiquement analysées et stockées dans une base PostgreSQL commune. Projet mené en binôme.",
+    description: "Les salariés stockaient leurs données dans des classeurs Excel isolés. DataBridge leur permet d'importer ces fichiers via une interface web simple : les données sont automatiquement analysées et stockées dans une base PostgreSQL commune. Projet réalisé en binôme dans le cadre du BTS SIO.",
     objectives: [
       "Centraliser les données de l'entreprise dans une base unique",
       "Offrir une interface utilisable par des non-techniciens",
@@ -59,7 +64,7 @@ const PROJECTS_ENTREPRISE = [
     icon: "🖥️",
     color: COLORS.cyan,
     summary: "Gestion des machines virtuelles et du réseau de l'hyperviseur Proxmox, configurations versionnées sur GitHub.",
-    description: "Mise en place et gestion des VM de l'entreprise sur l'hyperviseur Proxmox VE. Les configurations sont versionnées dans un dépôt Git dédié pour garder une trace de chaque changement.",
+    description: "Mise en place et gestion des VM du projet DataBridge sur l'hyperviseur Proxmox VE. Les configurations sont versionnées dans un dépôt Git dédié pour garder une trace de chaque changement.",
     objectives: ["Créer des VM standardisées", "Sécuriser l'accès (clés SSH, pas de mot de passe root)", "Tracer les modifications"],
     tasks: [
       "Création de VM Debian (ressources CPU/RAM/disque dimensionnées)",
@@ -71,11 +76,6 @@ const PROJECTS_ENTREPRISE = [
     tags: ["Proxmox VE", "Debian", "SSH", "Git"],
     link: "",
   },
-  /* ➕ Ajoute tes autres missions d'entreprise ici (copie un bloc ci-dessus) */
-];
-
-/* ---------------- PROJETS ÉCOLE ---------------- */
-const PROJECTS_ECOLE = [
   {
     title: "Pare-feu pfSense & segmentation VLAN",
     date: "1ère année",

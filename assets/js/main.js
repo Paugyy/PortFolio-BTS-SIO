@@ -184,7 +184,11 @@ function renderProjects(list, gridId) {
 
   function draw(cat) {
     const items = cat === "Tous" ? list : list.filter(p => p.category === cat);
-    grid.innerHTML = items.map((p, i) => `
+    if (!items.length) {
+      grid.innerHTML = `<div class="card center" style="grid-column:1/-1"><div class="icon-badge" style="margin-inline:auto">🚧</div><h3>Fiches en cours de rédaction</h3><p style="color:var(--text-soft);margin:0">Les projets de mon alternance arrivent très bientôt.</p></div>`;
+      return;
+    }
+    grid.innerHTML =items.map((p, i) => `
       <article class="card project reveal visible" data-id="${list.indexOf(p)}" style="animation-delay:${i * 60}ms">
         <div class="cover" style="background:${p.color}">${p.icon}</div>
         <div class="meta">${p.category} · ${p.date}</div>
