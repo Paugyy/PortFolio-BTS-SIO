@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Projet BTS SIO SISR : infrastructure haute disponibilité avec pfSense, VLAN, HAProxy, cluster MariaDB Galera 3 nœuds, WordPress redondé et GLPI. Architecture, procédures, tests et incidents.">
+  <title>Infrastructure haute disponibilité — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202610011800">
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">Projet école · BTS SIO SISR</span>
+    <h1 class="title-xl reveal d1">Infrastructure <span class="grad">haute disponibilité</span></h1>
+    <p class="lead reveal d2">Un site WordPress qui reste en ligne quand un serveur tombe : 2 serveurs web derrière HAProxy, une base MariaDB Galera répliquée sur 3 nœuds, GLPI, et un réseau découpé en 4 VLAN filtrés par pfSense.</p>
+    <div class="btn-row reveal d2">
+      <a class="btn btn-primary" href="https://github.com/Paugyy/bts-sio-ha-infrastructure" target="_blank" rel="noopener noreferrer">Dépôt GitHub ↗</a>
+      <a class="btn btn-ghost" href="#procedures">Voir les procédures</a>
+      <a class="btn btn-ghost" href="/ecole">← Tous les projets</a>
+    </div>
+  </header>
+
+  <section class="ha-section" style="padding-top:10px">
+    <div class="container">
+      <div class="grid grid-4 reveal ha-kpis">
+        <div class="card stat"><div class="num grad">10</div><div class="lbl">machines virtuelles</div></div>
+        <div class="card stat"><div class="num grad">4</div><div class="lbl">VLAN filtrés</div></div>
+        <div class="card stat"><div class="num grad">3</div><div class="lbl">nœuds Galera</div></div>
+        <div class="card stat"><div class="num grad">8</div><div class="lbl">incidents documentés</div></div>
+      </div>
+
+      <nav class="toc reveal" aria-label="Sommaire du projet">
+        <a href="#contexte">Contexte</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#fonctionnement">Fonctionnement</a>
+        <a href="#procedures">Procédures</a>
+        <a href="#tests">Tests</a>
+        <a href="#incidents">Incidents</a>
+        <a href="#limites">Limites</a>
+        <a href="#competences">Compétences</a>
+      </nav>
+
+      <!-- ===================== CONTEXTE ===================== -->
+      <div class="res-section reveal" id="contexte">
+        <h2>🎯 Contexte et objectifs</h2>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>Le problème</h3>
+            <p class="ha-text">Une organisation héberge un site vitrine WordPress et un outil de gestion de parc GLPI. Chaque application repose sur <strong>un seul serveur web et une seule base de données</strong> : une mise à jour ratée, un disque plein ou un redémarrage, et le service s'arrête.</p>
+            <pre class="code">Client ──► Serveur web ──► Base de données
+             (SPOF)            (SPOF)</pre>
+          </div>
+          <div class="card">
+            <h3>Les objectifs</h3>
+            <ul class="ha-list">
+              <li>Supprimer les <strong>points uniques de défaillance</strong> (SPOF) des couches web et données.</li>
+              <li><strong>Répliquer</strong> la base de manière synchrone, sans perte de données.</li>
+              <li><strong>Répartir la charge</strong> et écarter automatiquement un serveur en panne.</li>
+              <li><strong>Segmenter</strong> le réseau avec un filtrage deny-by-default.</li>
+              <li><strong>Prouver</strong> la tolérance aux pannes par des tests reproductibles.</li>
+              <li>Documenter pour qu'un tiers puisse <strong>reconstruire</strong> le lab.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== ARCHITECTURE ===================== -->
+      <div class="res-section reveal" id="architecture">
+        <h2>🏗️ Architecture</h2>
+        <figure class="ha-figure">
+          <img src="/assets/img/ha/architecture.svg" alt="Schéma : pfSense relie le réseau labo à 4 VLAN ; HAProxy répartit WordPress vers WEB-01 et WEB-02, publie GLPI et répartit le SQL vers 3 nœuds Galera" width="900" height="640" loading="lazy">
+          <figcaption>Vue d'ensemble : tout flux entre VLAN traverse pfSense ; HAProxy est le point d'entrée unique des services.</figcaption>
+        </figure>
+
+        <h3 class="ha-h3">Plan d'adressage</h3>
+        <div class="cmd-table-wrap">
+          <table class="cmd-table">
+            <thead><tr><th>VM</th><th>IP</th><th>VLAN</th><th>Rôle</th></tr></thead>
+            <tbody>
+              <tr class="cat-row"><td colspan="4">VLAN 301 · vWEB · 10.0.10.0/24 · passerelle .254</td></tr>
+              <tr><td>WEB-01</td><td><code>10.0.10.1</code></td><td>301</td><td>Apache + WordPress</td></tr>
+              <tr><td>HAProxy</td><td><code>10.0.10.2</code></td><td>301</td><td>Répartiteur HTTP (:80, :8080) et SQL (:3306)</td></tr>
+              <tr><td>GLPI-01</td><td><code>10.0.10.3</code></td><td>301</td><td>Apache + GLPI</td></tr>
+              <tr><td>WEB-02</td><td><code>10.0.10.4</code></td><td>301</td><td>Apache + WordPress</td></tr>
+              <tr class="cat-row"><td colspan="4">VLAN 302 · vBDD · 10.0.20.0/24</td></tr>
+              <tr><td>MYSQL-01 / 02 / 03</td><td><code>10.0.20.1 – .3</code></td><td>302</td><td>MariaDB 10.11 + Galera 4</td></tr>
+              <tr class="cat-row"><td colspan="4">VLAN 303 · vADMIN · 10.0.30.0/24 — VLAN 304 · vUSER · 10.0.40.0/24</td></tr>
+              <tr><td>ADM-01</td><td><code>10.0.30.1</code></td><td>303</td><td>Poste d'administration, tests</td></tr>
+              <tr><td>Guacamole</td><td><code>10.0.30.2</code></td><td>303</td><td>Bastion d'accès distant</td></tr>
+              <tr><td>pfSense</td><td><code>WAN 10.4.0.198</code></td><td>trunk</td><td>Routage inter-VLAN, NAT <code>:8081 → 10.0.10.2:80</code>, filtrage</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="grid grid-2 ha-figs">
+          <figure class="ha-figure">
+            <img src="/assets/img/ha/vlans.svg" alt="Segmentation en 4 VLAN sur un trunk 802.1Q" width="760" height="420" loading="lazy">
+            <figcaption>Segmentation : trunk 802.1Q vers pfSense, étiquettes posées par Proxmox.</figcaption>
+          </figure>
+          <figure class="ha-figure">
+            <img src="/assets/img/ha/wordpress-flow.svg" alt="Parcours d'une requête WordPress de bout en bout" width="820" height="340" loading="lazy">
+            <figcaption>Parcours d'une requête WordPress, du client jusqu'à la base.</figcaption>
+          </figure>
+        </div>
+      </div>
+
+      <!-- ===================== FONCTIONNEMENT ===================== -->
+      <div class="res-section reveal" id="fonctionnement">
+        <h2>⚙️ Fonctionnement de la haute disponibilité</h2>
+        <div class="grid grid-3">
+          <div class="card">
+            <div class="icon-badge">🌐</div>
+            <h3>Couche web</h3>
+            <p class="ha-text">WEB-01 et WEB-02 servent le même site. HAProxy teste <code>/wp-login.php</code> toutes les 3 s : après 3 échecs (~9 s), le serveur est retiré ; après 2 succès (~6 s), il est réintégré. Pendant la détection, les requêtes échouées sont rejouées sur l'autre serveur.</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge">🗄️</div>
+            <h3>Couche données</h3>
+            <p class="ha-text">Galera réplique chaque transaction <strong>avant</strong> de la valider : aucune donnée confirmée n'est perdue. Le cluster reste actif tant qu'il a la <strong>majorité</strong> (2 nœuds sur 3) : c'est le quorum, qui empêche deux moitiés de diverger (split-brain).</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge">🔀</div>
+            <h3>Point d'entrée unique</h3>
+            <p class="ha-text">Applications et clients ne connaissent que <code>10.0.10.2</code>. WordPress et GLPI se connectent à la base via <code>10.0.10.2:3306</code> : si un nœud tombe, HAProxy l'écarte sans toucher aux applications.</p>
+          </div>
+        </div>
+        <div class="grid grid-2 ha-figs">
+          <figure class="ha-figure">
+            <img src="/assets/img/ha/failover-web.svg" alt="Bascule automatique : nominal, panne de WEB-01, réintégration" width="780" height="330" loading="lazy">
+            <figcaption>Bascule automatique d'un serveur web.</figcaption>
+          </figure>
+          <figure class="ha-figure">
+            <img src="/assets/img/ha/galera-flow.svg" alt="Cycle d'une écriture dans Galera : diffusion du write-set, certification, validation" width="760" height="340" loading="lazy">
+            <figcaption>Cycle d'une écriture dans le cluster Galera.</figcaption>
+          </figure>
+        </div>
+        <div class="note">💡 <strong>Haute disponibilité ≠ sauvegarde.</strong> Un <code>DROP TABLE</code> accidentel est répliqué instantanément sur les 3 nœuds : seule une sauvegarde permet de revenir en arrière.</div>
+      </div>
+
+      <!-- ===================== PROCÉDURES ===================== -->
+      <div class="res-section reveal" id="procedures">
+        <h2>📘 Procédures</h2>
+        <p class="ha-text">Chaque commande indique la machine sur laquelle elle s'exécute. Les mots de passe sont remplacés par <code>&lt;PASSWORD&gt;</code>. Version complète, avec les fichiers de configuration et les scripts : <a href="https://github.com/Paugyy/bts-sio-ha-infrastructure/tree/main/docs" target="_blank" rel="noopener noreferrer">documentation sur GitHub ↗</a>.</p>
+
+        <details class="guide">
+          <summary>🧭 0. Ordre de déploiement <span class="sub">Les 16 étapes et leurs points de contrôle</span></summary>
+          <div class="guide-body">
+            <p>L'ordre suit les dépendances : le réseau avant les serveurs, la base avant les applications, les tests de panne à la fin. Chaque étape est validée avant de passer à la suivante.</p>
+            <ol>
+              <li><strong>Proxmox</strong> : 10 VM créées, bridge <code>vmbr1</code> « VLAN aware ».</li>
+              <li><strong>pfSense</strong> installé, WAN <code>10.4.0.198</code>.</li>
+              <li><strong>VLAN</strong> 301 à 304 : chaque VM pingue sa passerelle <code>.254</code>.</li>
+              <li><strong>MYSQL-01</strong> : MariaDB installé, <code>bind-address = 10.0.20.1</code>.</li>
+              <li><strong>MYSQL-02</strong> : idem avec <code>10.0.20.2</code>.</li>
+              <li><strong>MYSQL-03</strong> : idem avec <code>10.0.20.3</code>.</li>
+              <li><strong>Galera</strong> formé : <code>cluster_size = 3</code> sur chaque nœud.</li>
+              <li><strong>HAProxy</strong> : configuration valide, SQL réparti sur les 3 nœuds.</li>
+              <li><strong>WEB-01</strong> : Apache + PHP.</li>
+              <li><strong>WEB-02</strong> : Apache + PHP.</li>
+              <li><strong>WordPress</strong> : installé une fois, site identique sur les deux, servi via <code>10.0.10.2</code>.</li>
+              <li><strong>GLPI</strong> via <code>10.0.10.2:8080</code>.</li>
+              <li><strong>NAT</strong> : <code>http://10.4.0.198:8081</code> affiche WordPress.</li>
+              <li><strong>Filtrage</strong> deny-by-default, flux interdits vérifiés.</li>
+              <li><strong>Tests</strong> nominaux.</li>
+              <li><strong>Tests de bascule</strong> (web et Galera).</li>
+            </ol>
+            <div class="note">💡 Prendre un <strong>snapshot Proxmox</strong> avant chaque étape risquée : bootstrap Galera, changement de règles, mise à jour.</div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🔥 1. pfSense : VLAN, NAT et filtrage <span class="sub">Segmentation réseau</span></summary>
+          <div class="guide-body">
+            <h4>VLAN</h4>
+            <ol>
+              <li><strong>Proxmox</strong> : cocher <em>VLAN aware</em> sur <code>vmbr1</code>. La carte de pfSense reste <strong>sans tag</strong> (elle reçoit le trunk) ; chaque VM reçoit le tag de son VLAN (<em>Hardware → Network Device → VLAN Tag</em>).</li>
+              <li><strong>pfSense</strong>, <em>Interfaces → Assignments → VLANs</em> : créer 301, 302, 303 et 304 sur <code>vtnet1</code>.</li>
+              <li>Assigner chaque VLAN à une interface, l'activer, IP statique : <code>10.0.10.254/24</code>, <code>10.0.20.254/24</code>, <code>10.0.30.254/24</code>, <code>10.0.40.254/24</code>.</li>
+            </ol>
+<pre class="code"><span class="c"># SUR L'HÔTE PROXMOX : poser le tag 302 sur la VM MYSQL-01 (VMID 105)</span>
+qm set 105 --net0 virtio,bridge=vmbr1,tag=302
+<span class="c"># SUR MYSQL-01 : vérifier</span>
+ping -c 2 10.0.20.254</pre>
+            <h4>NAT vers HAProxy</h4>
+            <p><em>Firewall → NAT → Port Forward</em> : WAN, TCP, port <code>8081</code> → <code>10.0.10.2:80</code>, avec règle de filtrage associée. On cible <strong>HAProxy</strong> et jamais un serveur web : sinon la panne de ce serveur couperait le site.</p>
+            <div class="note">⚠️ Le WAN du lab est un réseau privé (10.4.0.0/24) : décocher <em>Block private networks</em> sur l'interface WAN, sinon le NAT ne reçoit rien.</div>
+            <h4>Règles principales (deny-by-default)</h4>
+            <div class="cmd-table-wrap">
+              <table class="cmd-table">
+                <thead><tr><th>Interface</th><th>Source → Destination</th><th>Port</th><th>Pourquoi</th></tr></thead>
+                <tbody>
+                  <tr><td>vWEB</td><td>HAProxy → nœuds Galera</td><td>3306</td><td>Seul HAProxy atteint les bases</td></tr>
+                  <tr><td>vADMIN</td><td>ADM-01, Guacamole → vWEB, vBDD</td><td>22</td><td>Administration SSH</td></tr>
+                  <tr><td>vADMIN</td><td>ADM-01 → HAProxy</td><td>80, 3306, 8080, 8404</td><td>Tests et statistiques</td></tr>
+                  <tr><td>vUSER</td><td>Postes → HAProxy</td><td>80, 8080</td><td>Services publiés uniquement</td></tr>
+                  <tr><td>Tous</td><td>VLAN → réseaux privés</td><td>tout</td><td><strong>Bloqué</strong> (sauf règles ci-dessus)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🗄️ 2. Cluster MariaDB Galera (3 nœuds) <span class="sub">Installation, configuration, bootstrap</span></summary>
+          <div class="guide-body">
+            <h4>Installation (sur les 3 nœuds)</h4>
+<pre class="code"><span class="c"># SUR MYSQL-01, MYSQL-02 et MYSQL-03</span>
+sudo apt update
+sudo apt install -y mariadb-server mariadb-client galera-4 rsync
+sudo mariadb-secure-installation</pre>
+            <div class="note">⚠️ <code>rsync</code> est indispensable : c'est lui qui copie les données vers un nœud qui rejoint le cluster (SST). Sans lui, le nœud ne peut pas entrer (incident vécu).</div>
+            <h4>Écouter sur l'IP du VLAN : <code>/etc/mysql/mariadb.conf.d/50-server.cnf</code></h4>
+<pre class="code"><span class="c"># SUR MYSQL-01 (10.0.20.2 sur MYSQL-02, 10.0.20.3 sur MYSQL-03)</span>
+bind-address = 10.0.20.1      <span class="c"># et non 127.0.0.1 (valeur par défaut)</span></pre>
+            <h4>Configuration Galera : <code>/etc/mysql/mariadb.conf.d/60-galera.cnf</code></h4>
+<pre class="code">[galera]
+wsrep_on                 = ON
+wsrep_provider           = /usr/lib/galera/libgalera_smm.so
+wsrep_cluster_name       = "mon_cluster_galera"                     <span class="c"># identique partout</span>
+wsrep_cluster_address    = "gcomm://10.0.20.1,10.0.20.2,10.0.20.3"  <span class="c"># identique partout</span>
+wsrep_node_address       = "10.0.20.1"                              <span class="c"># propre au nœud</span>
+wsrep_node_name          = "MYSQL-01"                               <span class="c"># propre au nœud</span>
+wsrep_sst_method         = rsync
+binlog_format            = ROW        <span class="c"># réplication des lignes, déterministe</span>
+default_storage_engine   = InnoDB     <span class="c"># seul moteur répliqué de façon fiable</span>
+innodb_autoinc_lock_mode = 2          <span class="c"># indispensable en multi-maître</span></pre>
+            <h4>Bootstrap : une seule fois, sur un seul nœud</h4>
+<pre class="code"><span class="c"># SUR LES 3 NŒUDS</span>
+sudo systemctl stop mariadb
+<span class="c"># SUR MYSQL-01 UNIQUEMENT : crée le cluster</span>
+sudo galera_new_cluster
+<span class="c"># SUR MYSQL-02, puis SUR MYSQL-03 : rejoignent le cluster</span>
+sudo systemctl start mariadb
+<span class="c"># SUR N'IMPORTE QUEL NŒUD : vérifier</span>
+sudo mariadb -e "SHOW STATUS WHERE Variable_name IN
+  ('wsrep_cluster_size','wsrep_cluster_status','wsrep_local_state_comment','wsrep_ready');"
+<span class="c"># Attendu : 3 / Primary / Synced / ON</span></pre>
+            <div class="note">⚠️ Ne jamais lancer <code>galera_new_cluster</code> sur un deuxième nœud : cela crée un second cluster indépendant et les données divergent. Un nœud qui redémarre rejoint le cluster avec un simple <code>systemctl start mariadb</code>.</div>
+            <h4>Test de réplication</h4>
+<pre class="code"><span class="c"># SUR MYSQL-01</span>
+sudo mariadb -e "CREATE DATABASE ha_test;
+  CREATE TABLE ha_test.t (id INT AUTO_INCREMENT PRIMARY KEY, origine VARCHAR(20));
+  INSERT INTO ha_test.t (origine) VALUES ('MYSQL-01');"
+<span class="c"># SUR MYSQL-03 : la ligne est déjà là</span>
+sudo mariadb -e "SELECT * FROM ha_test.t;"</pre>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🔀 3. HAProxy : répartition HTTP et SQL <span class="sub">Point d'entrée unique 10.0.10.2</span></summary>
+          <div class="guide-body">
+            <h4>Installation</h4>
+<pre class="code"><span class="c"># SUR HAPROXY (compte d'admin « haproxyadmin », PAS « haproxy » : réservé au service)</span>
+sudo apt install -y haproxy mariadb-client socat curl
+<span class="c"># SUR MYSQL-01 : compte de health-check, sans mot de passe ni privilège</span>
+sudo mariadb -e "CREATE USER 'haproxy_check'@'10.0.10.2';"</pre>
+            <h4>Configuration : <code>/etc/haproxy/haproxy.cfg</code> (extrait)</h4>
+<pre class="code">frontend fe_wordpress
+    bind 10.0.10.2:80
+    option forwardfor
+    default_backend be_wordpress
+
+backend be_wordpress
+    balance roundrobin
+    option httpchk
+    http-check send meth GET uri /wp-login.php ver HTTP/1.1 hdr Host 10.0.10.2
+    http-check expect status 200-399
+    cookie SRV_WP insert indirect nocache httponly
+    http-response set-header X-Served-By %[srv_name]   <span class="c"># rend la bascule visible</span>
+    default-server inter 3s fall 3 rise 2
+    server WEB-01 10.0.10.1:80 check cookie web01
+    server WEB-02 10.0.10.4:80 check cookie web02
+
+listen galera_cluster
+    bind 10.0.10.2:3306
+    mode tcp
+    balance roundrobin
+    option mysql-check user haproxy_check post-41
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server MYSQL-01 10.0.20.1:3306 check
+    server MYSQL-02 10.0.20.2:3306 check
+    server MYSQL-03 10.0.20.3:3306 check
+
+frontend fe_glpi
+    bind 10.0.10.2:8080
+    default_backend be_glpi
+
+backend be_glpi
+    option httpchk
+    server GLPI-01 10.0.10.3:80 check</pre>
+            <h4>Appliquer et vérifier</h4>
+<pre class="code"><span class="c"># SUR HAPROXY</span>
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg    <span class="c"># toujours vérifier AVANT</span>
+sudo systemctl reload haproxy                  <span class="c"># reload : sans couper les connexions</span>
+<span class="c"># Le SQL est-il bien réparti ? (un nœud différent à chaque connexion)</span>
+for i in 1 2 3 4 5 6; do mariadb -h 10.0.10.2 -u haproxy_check -N -e 'SELECT @@hostname'; done</pre>
+            <div class="note">💡 HAProxy relaie la connexion SQL : MariaDB voit donc l'IP de <strong>HAProxy</strong> (10.0.10.2), pas celle du serveur web. Les comptes applicatifs sont créés pour <code>'wordpress'@'10.0.10.2'</code>.</div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🌐 4. WordPress sur 2 serveurs <span class="sub">Base commune, fichiers synchronisés</span></summary>
+          <div class="guide-body">
+            <h4>Base et compte (une seule fois, répliqué par Galera)</h4>
+<pre class="code"><span class="c"># SUR MYSQL-01</span>
+sudo mariadb -e "CREATE DATABASE wordpress CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  CREATE USER 'wordpress'@'10.0.10.2' IDENTIFIED BY '&lt;PASSWORD&gt;';
+  GRANT ALL PRIVILEGES ON wordpress.* TO 'wordpress'@'10.0.10.2';"</pre>
+            <h4>Serveurs web</h4>
+<pre class="code"><span class="c"># SUR WEB-01 et WEB-02</span>
+sudo apt install -y apache2 libapache2-mod-php php-mysql php-curl php-gd php-mbstring php-xml php-zip php-intl rsync
+sudo a2enmod rewrite remoteip
+<span class="c"># vhost DocumentRoot /var/www/wordpress, AllowOverride All, IP réelle via X-Forwarded-For</span>
+sudo a2ensite wordpress &amp;&amp; sudo a2dissite 000-default
+sudo apachectl configtest &amp;&amp; sudo systemctl reload apache2</pre>
+            <h4><code>wp-config.php</code> : identique sur les deux serveurs</h4>
+<pre class="code">define( 'DB_HOST', '10.0.10.2:3306' );        <span class="c">// la base via HAProxy, jamais un nœud</span>
+define( 'DB_PASSWORD', '&lt;PASSWORD&gt;' );
+<span class="c">// Clés et sels IDENTIQUES sur WEB-01 et WEB-02 : la session reste valide sur les deux</span>
+define( 'DISALLOW_FILE_EDIT', true );          <span class="c">// une modif sur un seul serveur = divergence</span>
+define( 'AUTOMATIC_UPDATER_DISABLED', true );  <span class="c">// idem pour les mises à jour</span></pre>
+            <h4>Synchroniser les fichiers de WEB-01 vers WEB-02</h4>
+            <p>Galera réplique la <strong>base</strong>, pas les <strong>fichiers</strong> : une image téléversée sur WEB-01 n'existe pas sur WEB-02. L'installation, les extensions et les médias passent donc par WEB-01, puis sont copiés :</p>
+<pre class="code"><span class="c"># SUR WEB-01 : simulation (-n) puis exécution réelle</span>
+sudo rsync -aAXn --delete /var/www/wordpress/ &lt;ADMIN_USER&gt;@10.0.10.4:/var/www/wordpress/ --rsync-path="sudo rsync"
+sudo rsync -aAX  --delete /var/www/wordpress/ &lt;ADMIN_USER&gt;@10.0.10.4:/var/www/wordpress/ --rsync-path="sudo rsync"</pre>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🎫 5. GLPI derrière HAProxy <span class="sub">Apache, réécritures, base Galera</span></summary>
+          <div class="guide-body">
+<pre class="code"><span class="c"># SUR MYSQL-01</span>
+sudo mariadb -e "CREATE DATABASE glpi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+  CREATE USER 'glpi'@'10.0.10.2' IDENTIFIED BY '&lt;PASSWORD&gt;';
+  GRANT ALL PRIVILEGES ON glpi.* TO 'glpi'@'10.0.10.2';"
+<span class="c"># SUR GLPI-01</span>
+sudo apt install -y apache2 libapache2-mod-php php-mysql php-curl php-gd php-intl php-ldap php-mbstring php-xml php-zip php-bz2 php-bcmath php-apcu
+sudo a2enmod rewrite</pre>
+            <h4>vhost : seul le dossier <code>public/</code> est exposé</h4>
+<pre class="code">&lt;VirtualHost *:80&gt;
+    DocumentRoot /var/www/glpi/public
+    &lt;Directory /var/www/glpi/public&gt;
+        Require all granted
+        RewriteEngine On
+        RewriteCond %{REQUEST_FILENAME} !-f
+        RewriteRule ^(.*)$ index.php [QSA,L]   <span class="c"># tout passe par le routeur GLPI</span>
+    &lt;/Directory&gt;
+&lt;/VirtualHost&gt;</pre>
+            <p>Dans l'assistant d'installation : serveur SQL <code>10.0.10.2</code> (HAProxy), compte <code>glpi</code>. Ensuite : changer les mots de passe des comptes par défaut et supprimer <code>install/install.php</code>. GLPI est ensuite accessible sur <code>http://10.0.10.2:8080</code>.</p>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🧪 6. Tester la bascule <span class="sub">Panne d'un serveur web, panne d'un nœud Galera</span></summary>
+          <div class="guide-body">
+            <h4>Panne de WEB-01 : WEB-02 doit continuer</h4>
+<pre class="code"><span class="c"># SUR ADM-01 : observer en continu quel serveur répond</span>
+while true; do curl -sI http://10.0.10.2 | grep -Ei '^HTTP/|x-served-by' | tr -d '\r' | tr '\n' ' '; echo; sleep 1; done
+
+<span class="c"># SUR WEB-01 : provoquer la panne</span>
+sudo systemctl stop apache2
+<span class="c">#   → ADM-01 n'affiche plus que "X-Served-By: WEB-02", sans aucune erreur</span>
+
+<span class="c"># SUR WEB-01 : retour</span>
+sudo systemctl start apache2
+<span class="c">#   → après ~6 s, l'alternance WEB-01 / WEB-02 reprend toute seule</span></pre>
+            <p>Même test dans l'autre sens (WEB-02 arrêté → WEB-01 répond). La page de statistiques <code>http://10.0.10.2:8404/stats</code> montre le serveur passer au rouge puis revenir au vert.</p>
+            <h4>Panne d'un nœud Galera : le site doit rester en ligne</h4>
+<pre class="code"><span class="c"># SUR MYSQL-03</span>
+sudo systemctl stop mariadb
+<span class="c"># SUR MYSQL-01 : 2 nœuds, toujours Primary (2/3 = majorité)</span>
+sudo mariadb -e "SHOW STATUS LIKE 'wsrep_cluster_s%';"
+<span class="c"># → WordPress et GLPI fonctionnent toujours</span>
+
+<span class="c"># SUR MYSQL-03 : il rejoint seul et rattrape son retard (PAS de bootstrap)</span>
+sudo systemctl start mariadb</pre>
+            <div class="note">💡 Ces tests sont aussi automatisés dans le dépôt : <code>test-web01-failure.sh</code>, <code>test-web02-failure.sh</code> et <code>test-galera-node.sh</code>. En mode guidé, ils indiquent la commande à lancer et vérifient le résultat.</div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🚑 7. Reprise après une panne totale de Galera <span class="sub">grastate.dat, quorum, bootstrap sûr</span></summary>
+          <div class="guide-body">
+            <p>Si les 3 nœuds s'arrêtent (coupure de l'hôte Proxmox par exemple), il faut redémarrer le cluster depuis le nœud <strong>le plus à jour</strong>. Si on se trompe de nœud, les transactions les plus récentes sont <strong>perdues</strong>.</p>
+<pre class="code"><span class="c"># SUR CHAQUE NŒUD : état sauvegardé</span>
+sudo cat /var/lib/mysql/grastate.dat
+<span class="c">#   safe_to_bootstrap: 1  → dernier nœud arrêté proprement : c'est lui</span>
+<span class="c">#   seqno: -1             → arrêt brutal : lire la vraie position :</span>
+sudo galera_recovery
+<span class="c">#   --wsrep_start_position=&lt;uuid&gt;:1842   → comparer ce numéro sur les 3 nœuds</span>
+
+<span class="c"># SUR LE NŒUD LE PLUS À JOUR UNIQUEMENT</span>
+sudo sed -i 's/^safe_to_bootstrap: 0/safe_to_bootstrap: 1/' /var/lib/mysql/grastate.dat
+sudo galera_new_cluster
+<span class="c"># SUR LES DEUX AUTRES</span>
+sudo systemctl start mariadb</pre>
+            <div class="note">⚠️ Un nœud isolé qui passe en <code>non-Primary</code> et refuse les requêtes n'est pas une panne de Galera : c'est la protection contre le split-brain. Il faut diagnostiquer avant d'agir.</div>
+          </div>
+        </details>
+
+        <details class="guide">
+          <summary>🔐 8. Sécurité <span class="sub">SSH, moindre privilège, secrets</span></summary>
+          <div class="guide-body">
+            <ul>
+              <li><strong>SSH par clé</strong> uniquement, pas de connexion root, accepté depuis le VLAN d'administration seulement.</li>
+              <li><strong>Un compte SQL par application</strong>, limité à sa base et à l'IP de HAProxy ; jamais <code>'%'</code> ni <code>root</code>.</li>
+              <li><strong>Bases non exposées</strong> : seul HAProxy atteint le port 3306 du VLAN vBDD.</li>
+              <li><strong>Aucun secret sur GitHub</strong> : configurations publiées en <code>.example</code> avec <code>&lt;PASSWORD&gt;</code>, <code>.gitignore</code> strict, contrôle automatique des secrets dans la CI.</li>
+            </ul>
+<pre class="code"><span class="c"># SUR CHAQUE VM : /etc/ssh/sshd_config.d/10-hardening.conf</span>
+PermitRootLogin no
+PasswordAuthentication no
+<span class="c"># vérifier la syntaxe puis recharger (garder une session ouverte !)</span>
+sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
+          </div>
+        </details>
+      </div>
+
+      <!-- ===================== TESTS ===================== -->
+      <div class="res-section reveal" id="tests">
+        <h2>✅ Tests</h2>
+        <p class="ha-text">Une matrice de <strong>20 tests</strong> (T01 à T20) couvre le réseau, SSH, Galera, HAProxy, WordPress, GLPI, le NAT, le filtrage et les pannes. Les scripts Bash du dépôt affichent un résultat clair :</p>
+<pre class="code">[INFO] Checking Galera status on local...
+[OK]   wsrep_cluster_size = 3
+[OK]   wsrep_cluster_status = Primary
+[OK]   wsrep_local_state_comment = Synced
+[OK]   wsrep_ready = ON</pre>
+        <div class="cmd-table-wrap">
+          <table class="cmd-table">
+            <thead><tr><th>Scénario</th><th>Action</th><th>Résultat attendu</th></tr></thead>
+            <tbody>
+              <tr><td>Panne de WEB-01</td><td><code>systemctl stop apache2</code></td><td>WEB-02 sert tout le trafic, aucune erreur côté client</td></tr>
+              <tr><td>Panne de WEB-02</td><td><code>systemctl stop apache2</code></td><td>WEB-01 sert tout le trafic</td></tr>
+              <tr><td>Retour d'un serveur</td><td><code>systemctl start apache2</code></td><td>Réintégré automatiquement en ~6 s</td></tr>
+              <tr><td>Panne d'un nœud Galera</td><td><code>systemctl stop mariadb</code></td><td>Cluster à 2 nœuds, toujours Primary, site en ligne</td></tr>
+              <tr><td>Flux interdits</td><td><code>nc -zv 10.0.20.1 3306</code> depuis vUSER</td><td>Bloqué par pfSense</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="ha-small">Les preuves (captures et sorties de commandes) sont archivées au fur et à mesure dans le dossier <a href="https://github.com/Paugyy/bts-sio-ha-infrastructure/tree/main/evidence" target="_blank" rel="noopener noreferrer">evidence/ ↗</a>. La <a href="https://github.com/Paugyy/bts-sio-ha-infrastructure/blob/main/docs/08-tests/validation-matrix.md" target="_blank" rel="noopener noreferrer">matrice de validation ↗</a> donne le statut réel de chaque test.</p>
+      </div>
+
+      <!-- ===================== INCIDENTS ===================== -->
+      <div class="res-section reveal" id="incidents">
+        <h2>🛠️ Incidents rencontrés et résolus</h2>
+        <div class="grid grid-2">
+          <div class="card ha-incident"><h3>Cluster Galera « non-Primary »</h3><p><strong>Cause :</strong> perte du quorum après l'arrêt brutal de plusieurs nœuds.<br><strong>Solution :</strong> analyse de <code>grastate.dat</code> et <code>galera_recovery</code>, bootstrap du nœud le plus à jour uniquement.</p></div>
+          <div class="card ha-incident"><h3>« Connection refused » sur 3306</h3><p><strong>Cause :</strong> <code>bind-address = 127.0.0.1</code> par défaut : MariaDB n'écoutait qu'en local.<br><strong>Solution :</strong> chaque nœud écoute sur sa propre IP (10.0.20.1, .2, .3).</p></div>
+          <div class="card ha-incident"><h3>« dpkg was interrupted »</h3><p><strong>Cause :</strong> installation coupée en cours de route.<br><strong>Solution :</strong> <code>dpkg --configure -a</code> puis <code>apt --fix-broken install</code> ; installations longues dans <code>tmux</code>.</p></div>
+          <div class="card ha-incident"><h3>« rsync: command not found »</h3><p><strong>Cause :</strong> paquet absent sur une Debian minimale, alors que Galera (SST) et la synchro WordPress en ont besoin.<br><strong>Solution :</strong> installation sur tous les nœuds concernés.</p></div>
+          <div class="card ha-incident"><h3>GLPI : erreur 404</h3><p><strong>Cause :</strong> règles de réécriture Apache mal placées, <code>DocumentRoot</code> hors de <code>public/</code>.<br><strong>Solution :</strong> <code>mod_rewrite</code> activé, règles dans le bloc <code>&lt;Directory&gt;</code> du dossier <code>public/</code>.</p></div>
+          <div class="card ha-incident"><h3>SSH « Permission denied (publickey) »</h3><p><strong>Cause :</strong> clé privée placée dans <code>authorized_keys</code>, qui ne doit contenir que des clés <strong>publiques</strong>.<br><strong>Solution :</strong> <code>ssh-copy-id</code> avec la clé publique, nouvelle paire de clés.</p></div>
+          <div class="card ha-incident"><h3>« REMOTE HOST IDENTIFICATION HAS CHANGED »</h3><p><strong>Cause :</strong> VM réinstallée, donc nouvelle clé d'hôte.<br><strong>Solution :</strong> empreinte vérifiée depuis la console Proxmox <strong>avant</strong> <code>ssh-keygen -R</code> (c'est aussi le symptôme d'une attaque).</p></div>
+          <div class="card ha-incident"><h3>Conflit avec le compte « haproxy »</h3><p><strong>Cause :</strong> utilisateur humain nommé <code>haproxy</code>, comme le compte système du service.<br><strong>Solution :</strong> compte d'administration <code>haproxyadmin</code>, compte système laissé au paquet.</p></div>
+        </div>
+      </div>
+
+      <!-- ===================== LIMITES ===================== -->
+      <div class="res-section reveal" id="limites">
+        <h2>⚠️ Limites et améliorations</h2>
+        <div class="grid grid-2">
+          <figure class="ha-figure">
+            <img src="/assets/img/ha/spof.svg" alt="Carte des SPOF : hôte Proxmox, pfSense, HAProxy et GLPI uniques ; web et Galera redondés" width="780" height="380" loading="lazy">
+            <figcaption>Points uniques de défaillance restants, identifiés et assumés.</figcaption>
+          </figure>
+          <div class="card">
+            <h3>Ce qui reste à améliorer</h3>
+            <ul class="ha-list">
+              <li><strong>HAProxy unique</strong> → second HAProxy + Keepalived (IP virtuelle partagée).</li>
+              <li><strong>pfSense unique</strong> → deux pare-feu en CARP.</li>
+              <li><strong>Health-check SQL</strong> → vérifier l'état Galera (Synced), pas seulement que MariaDB répond.</li>
+              <li><strong>Fichiers WordPress</strong> → stockage partagé (NFS, GlusterFS) au lieu de rsync.</li>
+              <li><strong>HTTPS</strong>, <strong>supervision</strong> (Zabbix, Prometheus + Grafana), <strong>sauvegardes automatisées</strong>.</li>
+              <li><strong>Un seul hôte Proxmox</strong> : la redondance est logique, pas physique.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===================== COMPÉTENCES ===================== -->
+      <div class="res-section reveal" id="competences">
+        <h2>📚 Compétences BTS SIO mobilisées</h2>
+        <div class="grid grid-3">
+          <div class="card"><h3>Bloc 1 — Support</h3><ul class="ha-list"><li>Gérer le patrimoine informatique</li><li>Répondre aux incidents</li><li>Travailler en mode projet</li><li>Mettre à disposition un service</li></ul></div>
+          <div class="card"><h3>Bloc 2 — SISR</h3><ul class="ha-list"><li>Concevoir une solution d'infrastructure réseau</li><li>Installer, tester et déployer</li><li>Exploiter, dépanner et superviser</li></ul></div>
+          <div class="card"><h3>Bloc 3 — Cybersécurité</h3><ul class="ha-list"><li>Garantir la disponibilité et l'intégrité des services</li><li>Sécuriser l'infrastructure (filtrage, SSH, moindre privilège)</li></ul></div>
+        </div>
+        <div class="tags ha-tags">
+          <span class="tag">Proxmox VE</span><span class="tag cyan">pfSense</span><span class="tag">VLAN 802.1Q</span><span class="tag amber">HAProxy</span><span class="tag">MariaDB 10.11</span><span class="tag cyan">Galera 4</span><span class="tag">Apache</span><span class="tag amber">WordPress</span><span class="tag">GLPI</span><span class="tag cyan">Debian 12</span><span class="tag">Bash</span><span class="tag amber">Git / GitHub Actions</span>
+        </div>
+        <div class="btn-row">
+          <a class="btn btn-primary" href="https://github.com/Paugyy/bts-sio-ha-infrastructure" target="_blank" rel="noopener noreferrer">Toute la documentation sur GitHub ↗</a>
+          <a class="btn btn-ghost" href="/ecole">← Retour aux projets école</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/assets/js/main.js?v=202610011800"></script>
+</body>
+</html>

@@ -10,12 +10,13 @@ Portfolio réalisé en HTML / CSS / JavaScript (sans framework), hébergé sur *
 | `index.html` | Accueil : présentation, compétences, parcours |
 | `entreprise.html` | Projets réalisés en alternance |
 | `ecole.html` | Projets réalisés en BTS SIO |
+| `projet-ha.html` | Fiche détaillée du projet haute disponibilité (architecture, procédures, tests, incidents) |
 | `ressources.html` | Commandes Linux / Windows / Cisco / Docker / Git + procédures (pfSense, Guacamole, AD…) |
 | `cv.html` | CV en HTML (imprimable en PDF) |
 | `contact.html` | Coordonnées + formulaire (envoi par e-mail via FormSubmit) |
 
 ## Modifier le contenu
-- **Ajouter un projet** → `assets/js/data.js` (copier un bloc `{ ... }`)
+- **Ajouter un projet** → `assets/js/data.js` (copier un bloc `{ ... }`) ; plusieurs boutons possibles avec `links: [{ href, label }]`
 - **Menu, liens GitHub/LinkedIn** → haut de `assets/js/main.js` (objet `SITE`)
 - **Ajouter une commande** → `ressources.html`, objet `CMDS`
 - **Couleurs** → variables en haut de `assets/css/style.css`

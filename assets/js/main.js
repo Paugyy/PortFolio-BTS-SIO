@@ -16,7 +16,7 @@ const SITE = {
 const PAGES = [
   { href: "/", label: "Accueil" },
   { href: "/entreprise", label: "Projets entreprise" },
-  { href: "/ecole", label: "Projets école" },
+  { href: "/ecole", label: "Projets école", also: ["/projet-ha"] }, // "also" : sous-pages qui allument ce menu
   { href: "/ressources", label: "Ressources" },
   { href: "/cv", label: "CV" },
   { href: "/contact", label: "Contact" },
@@ -63,7 +63,7 @@ function buildLayout() {
       <a class="brand" href="/"><span class="logo">${SITE.initials}</span>${SITE.name}</a>
       <button class="burger" aria-label="Ouvrir le menu"><span></span></button>
       <ul class="nav-links">
-        ${PAGES.map(p => `<li><a href="${p.href}" class="${p.href === current ? "active" : ""}">${p.label}</a></li>`).join("")}
+        ${PAGES.map(p => `<li><a href="${p.href}" class="${p.href === current || (p.also || []).includes(current) ? "active" : ""}">${p.label}</a></li>`).join("")}
       </ul>
     </div>`;
   document.body.insertBefore(nav, document.querySelector("main"));
@@ -194,6 +194,17 @@ function initBlobParallax() {
 }
 
 /* ---------- 6. Modale projet (pages projets) ---------- */
+// Boutons de la modale : "link" (un seul lien) ou "links" [{ href, label }] (plusieurs).
+// Lien interne ("/projet-ha") : même onglet. Lien externe : nouvel onglet.
+function projectLinks(p) {
+  const links = p.links || (p.link ? [{ href: p.link, label: p.linkLabel || "Voir le projet" }] : []);
+  if (!links.length) return "";
+  return `<div class="btn-row" style="justify-content:flex-start">${links.map((l, i) => {
+    const internal = l.href.startsWith("/");
+    return `<a class="btn ${i === 0 ? "btn-primary" : "btn-ghost"}" href="${l.href}"${internal ? "" : ' target="_blank" rel="noopener noreferrer"'}>${l.label}${internal ? " →" : " ↗"}</a>`;
+  }).join("")}</div>`;
+}
+
 function renderProjects(list, gridId) {
   const grid = document.getElementById(gridId);
   if (!grid) return;
@@ -244,7 +255,7 @@ function renderProjects(list, gridId) {
       <h4>🛠️ Ce que j'ai réalisé</h4><ul>${p.tasks.map(o => `<li>${o}</li>`).join("")}</ul>
       ${p.skills ? `<h4>📚 Compétences BTS SIO mobilisées</h4><ul>${p.skills.map(o => `<li>${o}</li>`).join("")}</ul>` : ""}
       <div class="tags">${p.tags.map((t, k) => `<span class="tag ${tagColors[k % 4]}">${t}</span>`).join("")}</div>
-      ${p.link ? `<div class="btn-row" style="justify-content:flex-start"><a class="btn btn-primary" href="${p.link}" target="_blank" rel="noopener noreferrer">${p.linkLabel || "Voir le projet"} ↗</a></div>` : ""}`;
+      ${projectLinks(p)}`;
     modal.classList.add("open");
   });
   const close = () => modal.classList.remove("open");

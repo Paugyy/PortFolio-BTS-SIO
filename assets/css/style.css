@@ -747,3 +747,20 @@ footer .socials { display: flex; justify-content: center; gap: 18px; margin-bott
   border-radius: 10px;
   padding: 4px;
 }
+
+/* ---------- Page projet détaillée (/projet-ha) ---------- */
+.ha-kpis { margin-bottom: 32px; }
+.ha-kpis .stat .num { font-size: clamp(2rem, 4vw, 2.8rem); }
+.ha-text { color: var(--text-soft); }
+.ha-small { color: var(--text-mute); font-size: .9rem; margin-top: 14px; }
+.ha-list { padding-left: 20px; color: var(--text-soft); margin: 0; }
+.ha-list li { margin-bottom: 6px; }
+.ha-h3 { margin: 28px 0 12px; }
+.ha-figs { margin-top: 20px; }
+.ha-figure { margin: 0 0 20px; background: var(--surface-solid); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; box-shadow: 0 4px 16px -10px rgba(30, 41, 80, .2); }
+.ha-figure img { display: block; width: 100%; height: auto; }
+.ha-figure figcaption { color: var(--text-mute); font-size: .86rem; margin-top: 8px; text-align: center; }
+.ha-incident h3 { font-size: 1.02rem; margin: 0 0 8px; }
+.ha-incident p { color: var(--text-soft); margin: 0; font-size: .93rem; }
+.ha-tags { margin: 18px 0 8px; }
+.res-section .card h3 { margin-top: 0; }

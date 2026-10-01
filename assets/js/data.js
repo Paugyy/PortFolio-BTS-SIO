@@ -147,6 +147,42 @@ const PROJECTS_ENTREPRISE = [
 /* ---------------- PROJETS ÉCOLE ---------------- */
 const PROJECTS_ECOLE = [
   {
+    featured: true, // ⭐ projet principal
+    title: "Infrastructure haute disponibilité — Galera, HAProxy, WordPress",
+    date: "2ème année",
+    category: "Haute disponibilité",
+    icon: "⚖️",
+    color: COLORS.green,
+    summary: "Site WordPress sur 2 serveurs web derrière HAProxy, base MariaDB Galera répliquée sur 3 nœuds, GLPI, 4 VLAN filtrés par pfSense.",
+    description: "Dans une installation classique, un site repose sur un seul serveur web et une seule base de données : la moindre panne arrête tout. J'ai conçu et déployé sur Proxmox une infrastructure de 10 VM qui supprime ces points uniques de défaillance sur les couches web et données. L'arrêt d'un serveur web ou d'un nœud de base de données n'interrompt pas le service. Tout est documenté et versionné sur GitHub : procédures, configurations anonymisées, scripts de tests, journal d'incidents.",
+    objectives: [
+      "Garder le site disponible malgré la panne d'un serveur web ou d'une base",
+      "Répliquer les données de manière synchrone (aucune perte en cas de panne)",
+      "Segmenter le réseau et n'autoriser que les flux nécessaires (deny-by-default)",
+      "Prouver la tolérance aux pannes par des tests reproductibles",
+    ],
+    tasks: [
+      "pfSense : 4 VLAN (web, bases, admin, utilisateurs), règles de filtrage, NAT vers HAProxy",
+      "Cluster MariaDB Galera 3 nœuds : configuration, bootstrap, gestion du quorum",
+      "HAProxy : répartition HTTP (WordPress, GLPI) et SQL (Galera) avec health-checks",
+      "WordPress redondé sur 2 serveurs Apache, base commune via HAProxy, synchronisation des fichiers",
+      "GLPI publié via HAProxy, base sur le cluster Galera",
+      "Tests de bascule (panne d'un serveur web, d'un nœud Galera) et 8 incidents résolus et documentés",
+      "Dépôt GitHub : documentation complète, scripts Bash de validation, CI GitHub Actions",
+    ],
+    skills: [
+      "Concevoir une solution d'infrastructure réseau",
+      "Installer, tester et déployer une solution d'infrastructure réseau",
+      "Exploiter, dépanner et superviser une solution d'infrastructure réseau",
+      "Garantir la disponibilité, l'intégrité et la confidentialité des services",
+    ],
+    tags: ["HAProxy", "MariaDB Galera", "pfSense", "VLAN", "WordPress", "GLPI", "Debian", "Proxmox"],
+    links: [
+      { href: "/projet-ha", label: "Fiche complète et procédures" },
+      { href: "https://github.com/Paugyy/bts-sio-ha-infrastructure", label: "Dépôt GitHub" },
+    ],
+  },
+  {
     title: "DataBridge — plateforme d'import de données",
     date: "2026",
     category: "Développement & Infra",
