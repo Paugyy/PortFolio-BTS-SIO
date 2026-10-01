@@ -27,3 +27,15 @@ Il utilise [FormSubmit](https://formsubmit.co) (gratuit, sans compte).
 
 ## Tester en local
 Ouvrir `index.html` dans un navigateur, ou : `python -m http.server 8000` puis http://localhost:8000
+
+## Design 3D « Réseau »
+- Styles du thème : `assets/css/theme.css` (chargé après `style.css`) ; scène 3D : `assets/js/scene.js` + `scene-base.js` ; Three.js r160 servi en local dans `assets/vendor/` (compatible avec la CSP `script-src 'self'`).
+- Variantes et outil de prévisualisation : dossier local `~/portfolio-themes` (thèmes 8081 / 8082 / 8083).
+
+### Revenir instantanément à l'ancien design
+L'ancien design est sauvegardé dans la branche `backup/design-original` (et le tag `backup-design-original`) :
+```bash
+git restore --source=backup-design-original --staged --worktree -- .   # tous les fichiers = ancien design (fichiers du thème supprimés)
+git commit -m "revert: retour au design original" && git push
+```
+En ligne en ~1 minute (GitHub Pages). Pour remettre le thème 3D ensuite : `git revert HEAD` puis `git push`.

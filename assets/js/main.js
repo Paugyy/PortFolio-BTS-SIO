@@ -268,6 +268,5 @@ document.addEventListener("DOMContentLoaded", () => {
   initSecurity();
   initReveal();
   initCounters();
-  initParticles();
-  initBlobParallax();
+  // Fond animé : remplacé par la scène 3D (assets/js/scene.js). initParticles / initBlobParallax conservées si retour arrière.
 });

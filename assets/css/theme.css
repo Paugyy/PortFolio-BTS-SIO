@@ -1,0 +1,139 @@
+/* =========================================================
+   theme.css — thème 3D « Réseau » (chargé après style.css)
+   Remplace le design clair d'origine : couleurs sombres + scène
+   Three.js (assets/js/scene.js). Design d'origine sauvegardé :
+   branche backup/design-original, tag backup-design-original.
+   ========================================================= */
+/* =========================================================
+   _common.css — commun aux 3 thèmes 3D (chargé après style.css)
+   ========================================================= */
+
+/* Scène 3D : fond fixe derrière le contenu */
+#scene3d {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+#scene3d.ready { opacity: 1; }
+html:not(.is-home) #scene3d.ready { opacity: .38; }
+/* Petits écrans : l'objet passe derrière le texte, on l'atténue */
+@media (max-width: 999px) { html.is-home #scene3d.ready { opacity: .45; } }
+
+/* Ancien fond animé (halos + particules 2D) remplacé par la scène 3D */
+.bg, #particles { display: none !important; }
+
+/* Typographie un peu plus « studio » */
+.title-xl { letter-spacing: -0.035em; line-height: 1.02; }
+.title-lg { letter-spacing: -0.025em; }
+
+/* Accueil : texte à gauche, objet 3D à droite (grands écrans) */
+@media (min-width: 1000px) {
+  html.is-home .hero { text-align: left; place-items: center stretch; min-height: calc(100vh - var(--nav-h)); }
+  html.is-home .hero .container { width: 100%; }
+  html.is-home .hero .container > * { max-width: 680px; }
+  html.is-home .hero .title-xl { font-size: clamp(2.8rem, 5vw, 4.5rem); }
+  html.is-home .hero .avatar { width: 96px; height: 96px; margin-bottom: 22px; }
+  html.is-home .hero .avatar div { font-size: 2rem; }
+  html.is-home .hero .avatar { margin-left: 0; }
+  html.is-home .hero .lead { margin-inline: 0; }
+  html.is-home .hero .btn-row { justify-content: flex-start; }
+}
+
+/* Indicateur de défilement discret sous le hero */
+html.is-home .hero { position: relative; }
+html.is-home .hero::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  width: 1px;
+  height: 46px;
+  background: linear-gradient(var(--accent), transparent);
+  animation: scroll-hint 2.4s ease-in-out infinite;
+}
+@keyframes scroll-hint { 0%, 100% { transform: translateY(0); opacity: .2; } 50% { transform: translateY(10px); opacity: .9; } }
+
+@media (prefers-reduced-motion: reduce) {
+  #scene3d { transition: none; }
+  html.is-home .hero::after { animation: none; }
+}
+
+@media print {
+  #scene3d { display: none !important; }
+}
+
+/* =========================================================
+   _dark.css — surcharges communes aux thèmes sombres
+   (couleurs codées en dur dans style.css). Écran uniquement :
+   l'impression du CV reste sur fond blanc.
+   ========================================================= */
+@media screen {
+  body { background: var(--bg); }
+  .nav { background: color-mix(in srgb, var(--bg) 72%, transparent); border-bottom: 1px solid var(--border); }
+  .nav-links a:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .nav-links a.active, .chip.active, .toc a:hover, .toc a.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+  .btn-primary { background: var(--accent); color: var(--on-accent); box-shadow: 0 10px 30px -10px color-mix(in srgb, var(--accent) 70%, transparent); }
+  .btn-ghost { color: var(--text); }
+  .eyebrow { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .hero .avatar div, .cv-photo div, .cert-seal div { background: var(--surface-solid); }
+  .cmd-table th { background: color-mix(in srgb, var(--surface-solid) 70%, #000); }
+  .cat-row td { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .tag, .tag.cyan, .tag.pink, .tag.amber { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+  .tag.cyan, .tag.amber { background: color-mix(in srgb, var(--accent-2) 14%, transparent); color: var(--accent-2); }
+  .tag.pink { background: rgba(148, 163, 184, .12); color: var(--text-soft); }
+  .icon-badge { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .skill-bar, .mini-bar { background: rgba(148, 163, 184, .14); }
+  .field input, .field textarea, .field select, .search { background: var(--surface-solid); color: var(--text); }
+  .cv-side { background: linear-gradient(170deg, color-mix(in srgb, var(--surface-solid) 85%, var(--accent)) 0%, var(--surface-solid) 70%); }
+  .modal { background: rgba(0, 0, 0, .55); }
+  .modal-close { color: var(--text); background: rgba(148, 163, 184, .12); }
+  .tl-item::before { background: var(--bg); }
+  footer { background: color-mix(in srgb, var(--bg) 70%, transparent); }
+  /* Vignettes : dégradé inline (data.js) remplacé par une teinte sombre du thème */
+  .project .cover { background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 22%, var(--surface-solid)), var(--surface-solid)) !important; }
+  .project .cover::after { opacity: .12; }
+  .note { background: rgba(245, 158, 11, .1); }
+  .featured { color: #fff; }
+  .burger span, .burger span::before, .burger span::after { background: var(--text); }
+  .nav.open .burger span { background: transparent; }
+}
+@media screen and (max-width: 900px) {
+  .nav-links { background: color-mix(in srgb, var(--bg) 96%, transparent); }
+}
+
+/* =========================================================
+   Thème « Réseau » — bleu nuit, globe de nœuds connectés
+   ========================================================= */
+@media screen {
+  :root {
+    --bg: #060a14;
+    --surface: rgba(13, 20, 38, .62);
+    --surface-solid: #0c1426;
+    --border: rgba(125, 160, 220, .14);
+    --text: #e6edf7;
+    --text-soft: #9fb0c8;
+    --text-mute: #64748b;
+    --accent: #60a5fa;
+    --accent-2: #22d3ee;
+    --on-accent: #06101f;
+    --gradient: linear-gradient(110deg, #93c5fd 0%, #60a5fa 45%, #22d3ee 100%);
+    --shadow: 0 12px 40px -16px rgba(0, 0, 0, .7);
+    --shadow-lg: 0 30px 80px -24px rgba(0, 0, 0, .8);
+  }
+  body {
+    background:
+      radial-gradient(1100px 700px at 78% 18%, rgba(37, 99, 235, .16), transparent 60%),
+      radial-gradient(900px 600px at 0% 100%, rgba(34, 211, 238, .07), transparent 60%),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  .card { border-color: var(--border); }
+  .card:hover { border-color: rgba(96, 165, 250, .35); box-shadow: 0 24px 60px -24px rgba(37, 99, 235, .45); }
+  .brand .logo { background: var(--gradient); color: var(--on-accent); }
+  .hero .avatar { background: var(--gradient); box-shadow: 0 0 60px -10px rgba(96, 165, 250, .55); }
+}
