@@ -9,8 +9,8 @@
   <title>Infrastructure haute disponibilité — Yannis Paugy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/assets/css/style.css?v=202610011900">
-  <link rel="stylesheet" href="/assets/css/theme.css?v=202610011900">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202610081500">
+  <link rel="stylesheet" href="/assets/css/theme.css?v=202610081500">
 </head>
 <body>
 <main>
@@ -94,7 +94,7 @@
               <tr class="cat-row"><td colspan="4">VLAN 303 · vADMIN · 10.0.30.0/24 — VLAN 304 · vUSER · 10.0.40.0/24</td></tr>
               <tr><td>ADM-01</td><td><code>10.0.30.1</code></td><td>303</td><td>Poste d'administration, tests</td></tr>
               <tr><td>Guacamole</td><td><code>10.0.30.2</code></td><td>303</td><td>Bastion d'accès distant</td></tr>
-              <tr><td>pfSense</td><td><code>WAN 10.4.0.198</code></td><td>trunk</td><td>Routage inter-VLAN, NAT <code>:8081 → 10.0.10.2:80</code>, filtrage</td></tr>
+              <tr><td>pfSense</td><td><code>WAN 10.4.0.198</code></td><td>trunk</td><td>Routage inter-VLAN, NAT <code>:8081 → 10.0.10.2:80</code> et <code>:8082 → 10.0.10.2:8080</code>, filtrage</td></tr>
             </tbody>
           </table>
         </div>
@@ -166,7 +166,7 @@
               <li><strong>WEB-02</strong> : Apache + PHP.</li>
               <li><strong>WordPress</strong> : installé une fois, site identique sur les deux, servi via <code>10.0.10.2</code>.</li>
               <li><strong>GLPI</strong> via <code>10.0.10.2:8080</code>.</li>
-              <li><strong>NAT</strong> : <code>http://10.4.0.198:8081</code> affiche WordPress.</li>
+              <li><strong>NAT</strong> : <code>http://10.4.0.198:8081</code> affiche WordPress, <code>http://10.4.0.198:8082</code> affiche GLPI.</li>
               <li><strong>Filtrage</strong> deny-by-default, flux interdits vérifiés.</li>
               <li><strong>Tests</strong> nominaux.</li>
               <li><strong>Tests de bascule</strong> (web et Galera).</li>
@@ -505,7 +505,7 @@ sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
   </section>
 </main>
 
-<script src="/assets/js/main.js?v=202610011900"></script>
-<script type="module" src="/assets/js/scene.js?v=202610011900"></script>
+<script src="/assets/js/main.js?v=202610081500"></script>
+<script type="module" src="/assets/js/scene.js?v=202610081500"></script>
 </body>
 </html>

@@ -26,6 +26,7 @@ const INFRA = {
 
   nat: [
     { port: "8081", target: "10.0.10.2:80", label: "WordPress" },
+    { port: "8082", target: "10.0.10.2:8080", label: "GLPI" },
     { port: "8080", target: "10.0.30.2:8080", label: "Bastion" },
     { port: "2223", target: "10.0.30.2:22", label: "SSH" },
   ],
@@ -41,7 +42,7 @@ const INFRA = {
     {
       id: "fw", name: "pfSense", dns: "fw-01", ip: "10.4.0.198", zone: null, os: "pfSense", order: 1, spof: true,
       role: "Pare-feu, routeur inter-VLAN et NAT. Passerelle (.254) de chaque VLAN.",
-      ports: ["NAT 8081 · 8080 · 2223", "DNS 53", "NTP 123", "Interface web 443"],
+      ports: ["NAT 8081 · 8082 · 8080 · 2223", "DNS 53", "NTP 123", "Interface web 443"],
       needs: "L'hôte Proxmox (bridge VLAN-aware)",
       down: "Plus de routage entre VLAN ni de NAT : rien ne passe d'une zone à l'autre.",
       access: [
@@ -137,6 +138,7 @@ const INFRA = {
       needs: "HAProxy (SQL et publication), le cluster Galera",
       down: "GLPI est indisponible : frontal unique, limite assumée.",
       access: [
+        { label: "Ouvrir GLPI", href: "http://10.4.0.198:8082", scope: "vpn", note: "Publié par pfSense, servi par HAProxy." },
         { label: "GLPI (adresse interne)", href: "http://10.0.10.2:8080", scope: "interne", note: "Depuis CLI-01, ADM-01 ou une session du bastion." },
       ],
     },

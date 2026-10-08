@@ -116,7 +116,7 @@
 
     // Encadré NAT
     const nat = svg("g", { class: "infra-nat" });
-    nat.append(svg("rect", { x: 930, y: 26, width: 240, height: 84, rx: 14 }));
+    nat.append(svg("rect", { x: 930, y: 26, width: 240, height: 100, rx: 14 }));
     nat.append(svg("text", { x: 946, y: 48, class: "infra-nat-title" }, `Publication NAT · ${INFRA.wan.fw}`));
     INFRA.nat.forEach((n, i) => {
       nat.append(svg("text", { x: 946, y: 68 + i * 16, class: "infra-mono" }, `${n.port} → ${n.target}`));
