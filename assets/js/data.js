@@ -179,6 +179,7 @@ const PROJECTS_ECOLE = [
     tags: ["HAProxy", "MariaDB Galera", "pfSense", "VLAN", "WordPress", "GLPI", "Debian", "Proxmox"],
     links: [
       { href: "/projet-ha", label: "Fiche complète et procédures" },
+      { href: "/infra", label: "Schéma interactif" },
       { href: "https://github.com/Paugyy/bts-sio-ha-infrastructure", label: "Dépôt GitHub" },
     ],
   },

@@ -16,7 +16,7 @@ const SITE = {
 const PAGES = [
   { href: "/", label: "Accueil" },
   { href: "/entreprise", label: "Projets entreprise" },
-  { href: "/ecole", label: "Projets école", also: ["/projet-ha"] }, // "also" : sous-pages qui allument ce menu
+  { href: "/ecole", label: "Projets école", also: ["/projet-ha", "/infra"] }, // "also" : sous-pages qui allument ce menu
   { href: "/ressources", label: "Ressources" },
   { href: "/cv", label: "CV" },
   { href: "/contact", label: "Contact" },

@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Schéma interactif de mon infrastructure BTS SIO SISR : pfSense, 4 VLAN, HAProxy, cluster MariaDB Galera, WordPress redondé, GLPI, bastion Guacamole. Flux animés, fiche de chaque machine et simulation de panne.">
+  <title>Schéma interactif de l'infrastructure — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202610081100">
+  <link rel="stylesheet" href="/assets/css/theme.css?v=202610081100">
+  <link rel="stylesheet" href="/assets/css/infra.css?v=202610081100">
+</head>
+<body>
+<main class="infra">
+  <header class="page-head container">
+    <span class="eyebrow reveal">Projet école · Infrastructure haute disponibilité</span>
+    <h1 class="title-xl reveal d1">Schéma <span class="grad">interactif</span></h1>
+    <p class="lead reveal d2">Les <span id="infra-count">11</span> machines du labo, les flux qui les relient et ce qui tient quand l'une d'elles tombe. Cliquez sur une machine pour ouvrir sa fiche et ses accès.</p>
+    <div class="btn-row reveal d2">
+      <a class="btn btn-primary" href="/projet-ha">Fiche du projet et procédures →</a>
+      <a class="btn btn-ghost" href="/assets/docs/schema-infra-ypaugy.pdf" download>Schéma PDF (A3) ↓</a>
+      <a class="btn btn-ghost" href="/ecole">← Tous les projets</a>
+    </div>
+  </header>
+
+  <section class="ha-section" style="padding-top:10px">
+    <div class="container">
+      <nav class="toc reveal" aria-label="Sommaire">
+        <a href="#schema">Schéma</a>
+        <a href="#acces">Accès</a>
+        <a href="#ordre">Ordre de mise en place</a>
+        <a href="#telecharger">Télécharger</a>
+      </nav>
+
+      <!-- ===================== SCHÉMA ===================== -->
+      <div class="res-section reveal" id="schema">
+        <h2>🗺️ Le schéma, en mouvement</h2>
+        <p class="ha-text">Choisissez un scénario : le flux circule sur le schéma, étape par étape. Un flux entre deux VLAN monte toujours jusqu'à pfSense avant de redescendre, parce que rien ne passe d'une zone à l'autre sans être filtré.</p>
+        <div class="infra-toolbar" id="infra-scenarios" role="group" aria-label="Scénarios de flux"></div>
+        <p class="infra-hint">Sur petit écran, faites défiler le schéma vers la droite.</p>
+        <div class="card infra-stage is-idle" id="infra-stage">
+          <p class="infra-caption" id="infra-caption" aria-live="polite"></p>
+          <div class="infra-scroll" id="infra-scroll"></div>
+          <aside class="infra infra-pop" id="infra-pop" aria-labelledby="infra-pop-title" hidden></aside>
+        </div>
+        <div class="grid grid-2 infra-under">
+          <div class="card" id="infra-steps"></div>
+          <div class="card" id="infra-status" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <!-- ===================== ACCÈS ===================== -->
+      <div class="res-section reveal" id="acces">
+        <h2>🔗 Accès aux machines et aux services</h2>
+        <p class="ha-text">Une seule porte d'administration : le bastion. Chaque machine s'atteint depuis une session du bastion ; seuls le site et le bastion sont publiés par pfSense.</p>
+        <div class="note">Ces adresses sont privées : elles ne répondent que depuis le réseau du labo. Avant chaque ouverture, la page demande si le VPN de l'école est activé. Elle ne teste rien elle-même et n'envoie aucune requête.</div>
+        <div class="cmd-table-wrap">
+          <table class="cmd-table">
+            <thead><tr><th>Machine</th><th>Adresse</th><th>Rôle</th><th>Accès</th></tr></thead>
+            <tbody id="infra-access"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ===================== ORDRE ===================== -->
+      <div class="res-section reveal" id="ordre">
+        <h2>🧱 Ordre de mise en place</h2>
+        <p class="ha-text">Chaque machine a besoin de celles qui la précèdent : le réseau d'abord, puis l'annuaire, les données, ce qui les relaie, et enfin ce qui s'en sert. Cliquez sur une étape pour la retrouver sur le schéma.</p>
+        <ol class="infra-order" id="infra-order"></ol>
+        <div class="btn-row">
+          <a class="btn btn-ghost" href="/projet-ha#procedures">Voir les procédures détaillées →</a>
+        </div>
+      </div>
+
+      <!-- ===================== TÉLÉCHARGER ===================== -->
+      <div class="res-section reveal" id="telecharger">
+        <h2>📥 Le schéma à emporter</h2>
+        <div class="grid grid-2">
+          <div class="card">
+            <h3>Version figée</h3>
+            <p class="ha-text">Le schéma complet en PDF, format A3 : les 4 VLAN, les flux, la publication NAT, le filtrage et la partie physique du POD.</p>
+            <a class="btn btn-primary" href="/assets/docs/schema-infra-ypaugy.pdf" download>Télécharger le PDF ↓</a>
+          </div>
+          <div class="card">
+            <h3>Version modifiable</h3>
+            <p class="ha-text">Le fichier source, à ouvrir sur excalidraw.com (Ouvrir) ou dans Obsidian avec le module Excalidraw.</p>
+            <a class="btn btn-ghost" href="/assets/docs/schema-infra-ypaugy.excalidraw" download>Télécharger le fichier Excalidraw ↓</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Question posée avant toute ouverture d'une adresse du labo -->
+<div class="modal infra" id="vpn-modal" role="dialog" aria-modal="true" aria-labelledby="vpn-title" aria-hidden="true">
+  <div class="modal-box infra-vpn">
+    <button class="modal-close" type="button" aria-label="Fermer">✕</button>
+    <div class="icon-badge" aria-hidden="true">🔐</div>
+    <h2 id="vpn-title">Le VPN est-il activé ?</h2>
+    <p>Ouverture de <strong id="vpn-target-label"></strong>. Cette adresse appartient au réseau privé du labo : sans le VPN de l'école (<span id="vpn-name">vpnoob</span>), la page ne s'ouvrira pas.</p>
+    <code class="infra-url" id="vpn-target-url"></code>
+    <div class="btn-row">
+      <a class="btn btn-primary" id="vpn-yes" href="/infra" target="_blank" rel="noopener noreferrer">Oui, ouvrir ↗</a>
+      <button class="btn btn-ghost" id="vpn-no" type="button">Pas encore</button>
+    </div>
+    <p class="note" id="vpn-help" hidden>Activez <span id="vpn-name-2">vpnoob</span>, attendez qu'il soit connecté, puis cliquez sur « Oui, ouvrir ». Ces adresses ne sont pas joignables depuis Internet.</p>
+  </div>
+</div>
+
+<script src="/assets/js/infra-data.js?v=202610081100"></script>
+<script src="/assets/js/main.js?v=202610081100"></script>
+<script src="/assets/js/page-infra.js?v=202610081100"></script>
+<script type="module" src="/assets/js/scene.js?v=202610081100"></script>
+</body>
+</html>

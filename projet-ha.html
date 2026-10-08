@@ -20,6 +20,7 @@
     <p class="lead reveal d2">Un site WordPress qui reste en ligne quand un serveur tombe : 2 serveurs web derrière HAProxy, une base MariaDB Galera répliquée sur 3 nœuds, GLPI, et un réseau découpé en 4 VLAN filtrés par pfSense.</p>
     <div class="btn-row reveal d2">
       <a class="btn btn-primary" href="https://github.com/Paugyy/bts-sio-ha-infrastructure" target="_blank" rel="noopener noreferrer">Dépôt GitHub ↗</a>
+      <a class="btn btn-ghost" href="/infra">Schéma interactif →</a>
       <a class="btn btn-ghost" href="#procedures">Voir les procédures</a>
       <a class="btn btn-ghost" href="/ecole">← Tous les projets</a>
     </div>
@@ -76,6 +77,7 @@
           <img src="/assets/img/ha/architecture.svg" alt="Schéma : pfSense relie le réseau labo à 4 VLAN ; HAProxy répartit WordPress vers WEB-01 et WEB-02, publie GLPI et répartit le SQL vers 3 nœuds Galera" width="900" height="640" loading="lazy">
           <figcaption>Vue d'ensemble : tout flux entre VLAN traverse pfSense ; HAProxy est le point d'entrée unique des services.</figcaption>
         </figure>
+        <p class="ha-text">Pour voir les flux circuler, ouvrir la fiche de chaque machine et simuler une panne : <a href="/infra">le schéma interactif →</a></p>
 
         <h3 class="ha-h3">Plan d'adressage</h3>
         <div class="cmd-table-wrap">
