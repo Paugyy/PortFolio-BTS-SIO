@@ -27,7 +27,7 @@ const PROJECTS_ENTREPRISE = [
   {
     featured: true, // ⭐ projet principal
     title: "HarfangLab EDR — Déploiement et supervision",
-    date: "En cours",
+    date: "Terminé · 2026",
     category: "Cybersécurité",
     icon: "🛡️",
     color: COLORS.indigo,
@@ -42,7 +42,7 @@ const PROJECTS_ENTREPRISE = [
       "Déploiement de l'agent HarfangLab sur les postes et serveurs",
       "Configuration des politiques de sécurité",
       "Supervision des alertes depuis la console",
-      "Suivi du déploiement (projet en cours)",
+      "Suivi du déploiement jusqu'à sa finalisation sur le parc",
     ],
     skills: ["Sécuriser les équipements et les usages", "Gérer le patrimoine informatique"],
     tags: ["HarfangLab", "EDR", "Cybersécurité", "ANSSI"],
@@ -51,7 +51,7 @@ const PROJECTS_ENTREPRISE = [
   {
     featured: true, // ⭐ projet principal
     title: "Projet Cisco Meraki — Déploiement réseau",
-    date: "2025 — 2026",
+    date: "En cours",
     category: "Réseau",
     icon: "📡",
     color: COLORS.amber,
