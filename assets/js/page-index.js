@@ -1,6 +1,21 @@
 /* Script propre à la page index (sorti du HTML pour la CSP) */
 // Texte "tapé à la machine" dans le hero
-const words = ["$ sudo apt install passion", "> Get-ADUser -Filter *", "# pfctl -s rules", "$ docker compose up -d"];
+// Vraies commandes du quotidien : $ shell Linux · # root / pfSense · > PowerShell · Switch# Cisco IOS
+const words = [
+  "$ ssh -J bastion admin@web-01",     // rebond SSH par le bastion
+  "> tnc dc01 -Port 389",              // le contrôleur de domaine répond-il en LDAP ?
+  "$ journalctl -u haproxy -f",        // journaux HAProxy en direct
+  "> Get-HotFix | sort InstalledOn",   // dernières mises à jour KB installées
+  "Switch# show vlan brief",           // VLAN d'un switch Cisco
+  "$ ss -tulpn | grep LISTEN",         // ports en écoute
+  "# pfctl -s rules",                  // règles actives du pare-feu pfSense
+  "> netsh wlan show profiles",        // profils Wi-Fi d'un poste
+  "$ sudo tail -f /var/log/auth.log",  // connexions SSH en direct
+  "> gpupdate /force",                 // appliquer les GPO tout de suite
+  "$ dig +short paugy.org",            // résolution DNS
+  "$ docker compose up -d",
+  "$ git push origin main",            // et ce site se met à jour
+];
 const typed = document.getElementById("typed");
 let wi = 0, ci = 0, del = false;
 (function type() {
