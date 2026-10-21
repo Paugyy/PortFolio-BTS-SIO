@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Tableau de synthèse des réalisations professionnelles (épreuve E5, BTS SIO option SISR) de Yannis Paugy : couverture des compétences du bloc 1.">
+  <title>Tableau de synthèse E5 — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202610081500">
+  <link rel="stylesheet" href="/assets/css/theme.css?v=202610081500">
+  <style>
+    .syn-wrap { display: grid; gap: 22px; }
+    .syn-wrap > *, .syn-head > * { min-width: 0; }
+    .syn-head { display: grid; grid-template-columns: 1.4fr 1fr; gap: 22px; }
+    @media (max-width: 860px) { .syn-head { grid-template-columns: 1fr; } }
+    .syn-head .card:hover, .syn-panel:hover { transform: none; }
+    #syn-candidat { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 22px; margin-bottom: 22px; }
+    #syn-candidat small { display: block; color: var(--text-mute); font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; }
+    #syn-candidat strong { font-size: 1.02rem; }
+    #syn-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    @media (max-width: 600px) { #syn-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .syn-kpi { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    .syn-kpi strong { display: block; font-size: 1.5rem; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+    .syn-kpi span { color: var(--text-soft); font-size: .82rem; }
+    #syn-gaps h3 { margin: 0 0 10px; font-size: 1.05rem; }
+    #syn-gaps ul { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 8px; }
+    #syn-gaps li { color: var(--text-soft); font-size: .92rem; line-height: 1.45; }
+    #syn-gaps code, .syn-leg-bloc code { font-family: var(--mono); font-size: .78rem; color: var(--accent); margin-right: 6px; }
+    .syn-ok { margin: 0; font-weight: 600; }
+
+    .syn-section-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 26px 0 4px; }
+    .syn-section-title h2 { margin: 0; font-size: 1.35rem; }
+    .syn-section-title p { margin: 0; color: var(--text-soft); font-size: .9rem; }
+
+    #syn-cartes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); gap: 16px; }
+    .syn-card { text-align: left; font: inherit; color: inherit; cursor: pointer; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 18px; backdrop-filter: blur(16px); transition: border-color .2s, transform .2s; }
+    .syn-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+    .syn-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+    .syn-card h4 { margin: 4px 0 10px; font-size: 1rem; line-height: 1.3; }
+    .syn-code { font-family: var(--mono); font-size: .75rem; color: var(--accent); }
+    .syn-bar { height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; }
+    .syn-bar span { display: block; height: 100%; border-radius: 99px; background: var(--gradient); }
+    .syn-count { margin: 8px 0 10px; font-size: .82rem; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+    .syn-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .syn-card li { display: grid; grid-template-columns: 18px 1fr; gap: 6px; font-size: .84rem; line-height: 1.35; }
+    .syn-card li.off { color: #f59e0b; }
+    .syn-card li.on { color: var(--text-soft); }
+    .syn-dot { font-weight: 700; }
+    .syn-card li.on .syn-dot { color: #22c55e; }
+
+    #syn-filtre { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--accent); border-radius: var(--radius-sm); margin-bottom: 12px; font-size: .9rem; }
+    #syn-filtre[hidden] { display: none; }
+    #syn-filtre button { font: inherit; cursor: pointer; background: none; border: 1px solid var(--border); color: var(--text); border-radius: 999px; padding: 4px 12px; }
+
+    .syn-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+    #syn-table { border-collapse: collapse; width: 100%; min-width: 980px; font-size: .85rem; }
+    #syn-table th, #syn-table td { border-bottom: 1px solid var(--border); padding: 8px 6px; }
+    #syn-table thead th { position: sticky; top: 0; background: var(--surface-solid); z-index: 1; }
+    .syn-th-real { text-align: left; min-width: 280px; padding-left: 14px !important; }
+    .syn-th-group { font-family: var(--mono); font-size: .78rem; color: var(--accent); }
+    .syn-th-item { font-family: var(--mono); font-size: .75rem; color: var(--text-soft); cursor: pointer; width: 30px; }
+    .syn-th-item:hover, .syn-th-item:focus-visible { color: var(--accent); outline: none; }
+    .g1 { background: rgba(125, 160, 220, .05); }
+    thead .g1 { background-image: linear-gradient(rgba(125, 160, 220, .07), rgba(125, 160, 220, .07)); }
+    .syn-section td { font-weight: 700; font-size: .78rem; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); padding: 12px 14px 6px !important; }
+    .syn-real { padding-left: 14px !important; }
+    .syn-real strong { display: block; font-weight: 600; line-height: 1.3; }
+    .syn-periode { color: var(--text-mute); font-size: .78rem; margin-right: 10px; }
+    .syn-links a { font-size: .78rem; margin-right: 10px; }
+    .syn-todo { font-size: .76rem; color: #f59e0b; }
+    .syn-cell { text-align: center; font-weight: 700; color: var(--accent); }
+    .syn-cell.hl, .syn-th-item.hl { box-shadow: inset 0 0 0 999px rgba(96, 165, 250, .14); }
+    tfoot td { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-soft); border-bottom: 0 !important; }
+    tfoot .syn-cell { color: var(--text-soft); }
+    tfoot .syn-cell.zero { color: #f59e0b; }
+
+    #syn-legende { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 18px; }
+    .syn-leg-bloc h4 { margin: 0 0 8px; font-size: .92rem; }
+    .syn-leg-bloc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .syn-leg-bloc li { display: grid; grid-template-columns: 48px 1fr 34px; gap: 6px; font-size: .84rem; color: var(--text-soft); line-height: 1.35; }
+    .syn-leg-bloc li.off { color: #f59e0b; }
+    .syn-leg-bloc em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
+    .syn-note { color: var(--text-mute); font-size: .82rem; margin-top: 18px; }
+
+    @media print {
+      @page { size: A4 landscape; margin: 10mm; }
+      body { color: #000; }
+      .syn-head, .syn-cov-zone, .syn-legend-zone, #syn-filtre, .syn-section-title p { display: none !important; }
+      .syn-scroll { overflow: visible; border: 0; background: #fff; }
+      #syn-table { min-width: 0; font-size: 8pt; color: #000; }
+      #syn-table th, #syn-table td { border: 1px solid #999; padding: 3px; }
+      #syn-table thead th { position: static; background: #eef2f7; color: #000; }
+      .syn-row[hidden] { display: table-row !important; }
+      .syn-links, .syn-todo { display: none; }
+      .syn-print-head { display: block !important; }
+    }
+    .syn-print-head { display: none; font-size: 10pt; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">Épreuve E5 · Bloc 1</span>
+    <h1 class="title-xl reveal d1">Tableau de <span class="grad">synthèse</span></h1>
+    <p class="lead reveal d2">Mes réalisations professionnelles et les compétences du bloc « Support et mise à disposition de services informatiques » qu'elles mobilisent.</p>
+    <div class="btn-row reveal d2 no-print">
+      <button class="btn btn-primary" data-print>🖨️ Imprimer / Enregistrer en PDF</button>
+      <a class="btn btn-ghost" href="#syn-tableau">Voir le tableau</a>
+    </div>
+  </header>
+
+  <section style="padding-top:10px">
+    <div class="container syn-wrap">
+      <div class="syn-head">
+        <div class="card syn-panel">
+          <div id="syn-candidat"></div>
+          <div id="syn-kpis"></div>
+        </div>
+        <div class="card syn-panel" id="syn-gaps"></div>
+      </div>
+
+      <div class="syn-cov-zone">
+        <div class="syn-section-title"><h2>Couverture par compétence</h2><p>Clique sur une compétence pour filtrer le tableau.</p></div>
+        <div id="syn-cartes"></div>
+      </div>
+
+      <div id="syn-tableau">
+        <div class="syn-section-title"><h2>Réalisations professionnelles</h2><p>Survole un numéro de colonne pour voir la sous-compétence, clique pour filtrer.</p></div>
+        <p class="syn-print-head">BTS SIO option SISR — Tableau de synthèse des réalisations professionnelles — Yannis PAUGY — MyDigitalSchool Caen</p>
+        <div id="syn-filtre" hidden><span></span><button type="button">Tout afficher ✕</button></div>
+        <div class="syn-scroll"><table id="syn-table"></table></div>
+      </div>
+
+      <div class="syn-legend-zone">
+        <div class="syn-section-title"><h2>Les 22 sous-compétences du bloc 1</h2><p>Nombre de réalisations qui mobilisent chacune.</p></div>
+        <div class="card syn-panel"><div id="syn-legende"></div></div>
+        <p class="syn-note">Structure conforme au modèle de tableau de synthèse de la circulaire nationale d'organisation du BTS SIO (épreuve E5).</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/assets/js/synthese-data.js?v=202610211015"></script>
+<script src="/assets/js/main.js?v=202610211015"></script>
+<script src="/assets/js/page-synthese.js?v=202610211015"></script>
+<script type="module" src="/assets/js/scene.js?v=202610081500"></script>
+</body>
+</html>

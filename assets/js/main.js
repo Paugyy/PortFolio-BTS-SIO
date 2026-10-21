@@ -18,6 +18,7 @@ const PAGES = [
   { href: "/entreprise", label: "Projets entreprise" },
   { href: "/ecole", label: "Projets école", also: ["/projet-ha", "/infra"] }, // "also" : sous-pages qui allument ce menu
   { href: "/ressources", label: "Ressources" },
+  { href: "/synthese", label: "Synthèse E5" },
   { href: "/cv", label: "CV" },
   { href: "/contact", label: "Contact" },
 ];
