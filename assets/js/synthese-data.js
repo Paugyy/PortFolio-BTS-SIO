@@ -69,7 +69,7 @@ const REALISATIONS = [
     productions: [{ label: "Fiche projet", href: "/entreprise" }],
     comp: ["1.1.1", "1.2.2"] },
 
-  { modalite: "pro1", titre: "Déploiement de l'EDR HarfangLab", periode: "2025 — 2026 · terminé",
+  { modalite: "pro1", titre: "Déploiement de l'EDR HarfangLab", periode: "2025 — 2026",
     productions: [{ label: "Fiche projet", href: "/entreprise" }],
     comp: ["1.1.1", "1.1.4", "1.4.2", "1.4.3", "1.5.1", "1.5.2"] },
   { modalite: "pro1", titre: "Déploiement réseau Cisco Meraki (switchs, bornes Wi-Fi, portails privé et public)", periode: "Depuis 2025 · en cours",

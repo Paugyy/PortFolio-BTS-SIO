@@ -27,7 +27,7 @@ const PROJECTS_ENTREPRISE = [
   {
     featured: true, // ⭐ projet principal
     title: "HarfangLab EDR — Déploiement et supervision",
-    date: "Terminé · 2026",
+    date: "2025 — 2026",
     category: "Cybersécurité",
     icon: "🛡️",
     color: COLORS.indigo,
