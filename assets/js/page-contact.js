@@ -18,12 +18,17 @@ form.addEventListener("submit", async e => {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(data),
     });
-    const json = await res.json();
-    if (!res.ok || json.success === "false") throw new Error(json.message);
+    const json = await res.json().catch(() => ({}));
+    // FormSubmit renvoie success en texte ("true"/"false") ou en booléen selon les cas :
+    // on n'affiche « envoyé » que si l'envoi est explicitement confirmé.
+    if (!res.ok || String(json.success) !== "true") {
+      throw new Error(json.message || `HTTP ${res.status}`);
+    }
     status.classList.add("ok");
     status.textContent = "✅ Message envoyé ! Je te réponds au plus vite.";
     form.reset();
   } catch (err) {
+    console.warn("Formulaire de contact — échec FormSubmit :", err.message);
     status.classList.add("err");
     status.textContent = "❌ L'envoi a échoué. Écris-moi directement à yapaugy@gmail.com.";
   } finally {
