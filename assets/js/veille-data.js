@@ -7,7 +7,7 @@
 const VEILLE_SUJET = {
   titre: "Sécurité des navigateurs : les extensions malveillantes",
   question: "Comment protéger un parc de postes contre les extensions de navigateur malveillantes, alors que même les magasins officiels en distribuent ?",
-  contexte: "Chez Santé BTP Normandie, je gère les navigateurs du parc avec le browser management de NinjaOne : filtrage des sites indésirables (en complément d'Orange Cyberdefense) et blocage des extensions non vérifiées ou suspectes. Cette veille me sert à savoir quoi bloquer, et pourquoi.",
+  contexte: "En alternance, je gère les navigateurs du parc avec NinjaOne : filtrage des sites indésirables et blocage des extensions non vérifiées ou suspectes. Cette veille me sert à savoir quoi bloquer, et pourquoi.",
 };
 
 const VEILLE_SOURCES = [
@@ -21,7 +21,7 @@ const VEILLE_SOURCES = [
 ];
 
 const VEILLE_METHODE = [
-  { etape: "Collecter", detail: "Les flux RSS des sources sont regroupés dans Inoreader, avec des mots-clés : « extension », « Chrome Web Store », « Edge Add-ons »." },
+  { etape: "Collecter", detail: "Je consulte régulièrement les sources ci-dessous et je fais des recherches par mots-clés : « extension », « Chrome Web Store », « Edge Add-ons »." },
   { etape: "Trier", detail: "Je garde ce qui touche les navigateurs du parc (Chrome, Edge) et ce qui donne des identifiants d'extensions à bloquer." },
   { etape: "Synthétiser", detail: "Chaque article retenu donne une fiche datée : les faits, puis ce que ça change pour le parc." },
   { etape: "Appliquer", detail: "Les enseignements alimentent la politique de navigateurs dans NinjaOne." },
