@@ -69,14 +69,15 @@ const REALISATIONS = [
     productions: [{ label: "Fiche projet", href: "/entreprise" }],
     comp: ["1.1.1", "1.2.2"] },
 
-  /* ---------- Santé BTP Normandie — 2e année ---------- */
-  { modalite: "pro2", titre: "Déploiement de l'EDR HarfangLab", periode: "Terminé en 2026",
+  { modalite: "pro1", titre: "Déploiement de l'EDR HarfangLab", periode: "2025 — 2026 · terminé",
     productions: [{ label: "Fiche projet", href: "/entreprise" }],
     comp: ["1.1.1", "1.1.4", "1.4.2", "1.5.2"] },
-  { modalite: "pro2", titre: "Déploiement réseau Cisco Meraki", periode: "En cours",
+  { modalite: "pro1", titre: "Déploiement réseau Cisco Meraki (accès Wi-Fi, portail captif)", periode: "Depuis 2025 · en cours",
     productions: [{ label: "Fiche projet", href: "/entreprise" }],
     comp: ["1.1.3", "1.4.1", "1.4.2", "1.5.2"] },
-  { modalite: "pro2", titre: "Durcissement des navigateurs du parc (blocage d'extensions)", periode: "Sept. 2026",
+
+  /* ---------- Santé BTP Normandie — 2e année ---------- */
+  { modalite: "pro2", titre: "Sécurisation des navigateurs du parc avec NinjaOne (filtrage web, blocage des extensions non vérifiées)", periode: "Sept. 2026",
     productions: [],
     comp: ["1.1.6", "1.6.2"] },
 
@@ -92,7 +93,7 @@ const REALISATIONS = [
     comp: ["1.1.1", "1.2.1"] },
   { modalite: "formation", titre: "Infrastructure Proxmox", periode: "2026",
     productions: [{ label: "Fiche projet", href: "/ecole" }],
-    comp: ["1.1.5", "1.5.2"] },
+    comp: ["1.5.2"] },
   { modalite: "formation", titre: "DataBridge — plateforme d'import de données (projet d'équipe)", periode: "2026",
     productions: [{ label: "Fiche projet", href: "/ecole" }],
     comp: ["1.3.3", "1.4.1", "1.4.2", "1.5.1"] },
