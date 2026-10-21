@@ -59,9 +59,9 @@ const MODALITES = {
 
 const REALISATIONS = [
   /* ---------- Santé BTP Normandie — 1re année ---------- */
-  { modalite: "pro1", titre: "Administration du parc et gestion des mises à jour avec NinjaOne", periode: "2025 — 2026",
+  { modalite: "pro1", titre: "Administration du parc et des comptes : NinjaOne (mises à jour), Active Directory, synchronisation SCIM", periode: "2025 — 2026",
     productions: [{ label: "Fiche projet", href: "/entreprise" }, { label: "Certification NinjaOne", href: "https://academy.ninjaone.com/certificate/cKC9PqAsKA" }],
-    comp: ["1.1.1", "1.1.4", "1.2.1", "1.2.2", "1.6.1"] },
+    comp: ["1.1.1", "1.1.3", "1.1.4", "1.2.1", "1.2.2", "1.2.3", "1.6.1"] },
   { modalite: "pro1", titre: "Téléphonie Microsoft Teams et parc d'imprimantes", periode: "2025 — 2026",
     productions: [{ label: "Fiche projet", href: "/entreprise" }],
     comp: ["1.2.2", "1.5.2", "1.5.3"] },
