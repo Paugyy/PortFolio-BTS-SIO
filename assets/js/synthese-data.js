@@ -91,7 +91,7 @@ const REALISATIONS = [
   { modalite: "formation", titre: "Gestion de parc avec GLPI", periode: "1re année",
     productions: [{ label: "Fiche projet", href: "/ecole" }],
     comp: ["1.1.1", "1.2.1"] },
-  { modalite: "formation", titre: "Infrastructure Proxmox", periode: "2026",
+  { modalite: "formation", titre: "Infrastructure Proxmox", periode: "En cours",
     productions: [{ label: "Fiche projet", href: "/ecole" }],
     comp: ["1.5.2"] },
   { modalite: "formation", titre: "DataBridge — plateforme d'import de données (projet d'équipe)", periode: "2026",

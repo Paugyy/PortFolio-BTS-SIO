@@ -214,7 +214,7 @@ const PROJECTS_ECOLE = [
   },
   {
     title: "Infrastructure Proxmox",
-    date: "2026",
+    date: "En cours",
     category: "Virtualisation",
     icon: "🖥️",
     color: COLORS.cyan,
