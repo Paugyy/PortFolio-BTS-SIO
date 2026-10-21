@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Veille technologique de Yannis Paugy (BTS SIO SISR) : sécurité des navigateurs et extensions malveillantes. Sources, méthode et synthèses datées.">
+  <title>Veille technologique — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202610081500">
+  <link rel="stylesheet" href="/assets/css/theme.css?v=202610081500">
+  <style>
+    .vt-wrap { display: grid; gap: 22px; }
+    .vt-wrap > * { min-width: 0; }
+    .vt-panel:hover, .vt-article:hover { transform: none; }
+    .vt-head { display: grid; grid-template-columns: 1.5fr 1fr; gap: 22px; }
+    @media (max-width: 860px) { .vt-head { grid-template-columns: 1fr; } }
+    .vt-label { display: block; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin-bottom: 8px; font-weight: 700; }
+    #vt-titre { margin: 0 0 12px; font-size: 1.4rem; line-height: 1.25; }
+    #vt-question { margin: 0 0 14px; font-size: 1.05rem; font-weight: 600; line-height: 1.45; }
+    #vt-contexte { margin: 0; color: var(--text-soft); line-height: 1.6; }
+    #vt-kpis { display: grid; gap: 12px; }
+    .vt-kpi { padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    .vt-kpi strong { display: block; font-size: 1.35rem; font-weight: 800; color: var(--accent); }
+    .vt-kpi span { color: var(--text-soft); font-size: .84rem; }
+    .vt-title { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 26px 0 12px; }
+    .vt-title h2 { margin: 0; font-size: 1.35rem; }
+    .vt-title p { margin: 0; color: var(--text-soft); font-size: .9rem; }
+    #vt-methode { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px; }
+    .vt-step { padding: 18px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); }
+    .vt-step h4 { margin: 8px 0 6px; }
+    .vt-step p { margin: 0; color: var(--text-soft); font-size: .9rem; line-height: 1.5; }
+    .vt-num { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 50%; background: var(--gradient); color: var(--on-accent, #fff); font-weight: 800; font-size: .85rem; }
+    .vt-table-wrap { overflow-x: auto; }
+    .vt-table { width: 100%; border-collapse: collapse; font-size: .92rem; min-width: 560px; }
+    .vt-table th, .vt-table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    .vt-table th { font-size: .78rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-mute); }
+    .vt-table td:nth-child(2) { color: var(--text-soft); white-space: nowrap; }
+    .vt-table td:nth-child(3) { color: var(--text-soft); }
+    #vt-filtres { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .vt-filtre { font: inherit; font-size: .85rem; cursor: pointer; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-soft); }
+    .vt-filtre.active, .vt-filtre:hover { border-color: var(--accent); color: var(--text); }
+    #vt-articles { display: grid; gap: 18px; }
+    .vt-meta { display: flex; gap: 6px; flex-wrap: wrap; color: var(--text-mute); font-size: .84rem; }
+    .vt-meta time { color: var(--accent); font-weight: 600; }
+    .vt-article h3 { margin: 8px 0 10px; font-size: 1.15rem; line-height: 1.3; }
+    .vt-resume { margin: 0 0 14px; color: var(--text-soft); line-height: 1.6; }
+    .vt-impact { padding: 14px 16px; border-left: 3px solid var(--accent); background: rgba(96, 165, 250, .07); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+    .vt-impact strong { display: block; font-size: .82rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); margin-bottom: 6px; }
+    .vt-impact p { margin: 0; line-height: 1.55; }
+    .vt-lien { margin: 14px 0 0; font-size: .88rem; }
+    #vt-bilan { margin: 0; padding-left: 20px; display: grid; gap: 10px; line-height: 1.55; }
+  </style>
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">Veille technologique</span>
+    <h1 class="title-xl reveal d1">Ma <span class="grad">veille</span></h1>
+    <p class="lead reveal d2">Ce que je suis, comment je le suis, et ce que j'en fais sur le parc que j'administre.</p>
+  </header>
+
+  <section style="padding-top:10px">
+    <div class="container vt-wrap">
+      <div class="vt-head">
+        <div class="card vt-panel">
+          <span class="vt-label">Sujet</span>
+          <h2 id="vt-titre"></h2>
+          <p id="vt-question"></p>
+          <p id="vt-contexte"></p>
+        </div>
+        <div class="card vt-panel"><div id="vt-kpis"></div></div>
+      </div>
+
+      <div>
+        <div class="vt-title"><h2>Ma méthode</h2></div>
+        <div id="vt-methode"></div>
+      </div>
+
+      <div>
+        <div class="vt-title"><h2>Synthèses</h2><p>Les plus récentes en premier.</p></div>
+        <div id="vt-filtres"></div>
+        <div id="vt-articles"></div>
+      </div>
+
+      <div class="card vt-panel">
+        <span class="vt-label">Bilan</span>
+        <ul id="vt-bilan"></ul>
+      </div>
+
+      <div>
+        <div class="vt-title"><h2>Sources suivies</h2></div>
+        <div class="card vt-panel vt-table-wrap">
+          <table class="vt-table">
+            <thead><tr><th>Source</th><th>Type</th><th>Pourquoi je la suis</th></tr></thead>
+            <tbody id="vt-sources"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/assets/js/veille-data.js?v=202610211100"></script>
+<script src="/assets/js/main.js?v=202610211100"></script>
+<script src="/assets/js/page-veille.js?v=202610211100"></script>
+<script type="module" src="/assets/js/scene.js?v=202610081500"></script>
+</body>
+</html>
