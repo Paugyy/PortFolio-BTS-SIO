@@ -77,6 +77,7 @@ function buildLayout() {
       <a href="${SITE.github}" target="_blank" rel="noopener noreferrer">GitHub</a>
       ${SITE.linkedin ? `<a href="${SITE.linkedin}" target="_blank" rel="noopener noreferrer">LinkedIn</a>` : ""}
       <a href="/contact">Contact</a>
+      <a href="/confidentialite">Mentions légales et confidentialité</a>
     </div>
     © ${new Date().getFullYear()} ${SITE.name} — Portfolio BTS SIO`;
   document.body.appendChild(footer);
