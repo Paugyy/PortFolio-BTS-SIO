@@ -42,6 +42,7 @@
         <a href="#contexte">Contexte</a>
         <a href="#architecture">Architecture</a>
         <a href="#fonctionnement">Fonctionnement</a>
+        <a href="#supervision">Supervision</a>
         <a href="#procedures">Procédures</a>
         <a href="#tests">Tests</a>
         <a href="#incidents">Incidents</a>
@@ -77,8 +78,8 @@
       <div class="res-section reveal" id="architecture">
         <h2>🏗️ Architecture</h2>
         <figure class="ha-figure">
-          <img src="/assets/img/ha/architecture.svg" alt="Schéma : pfSense relie le réseau labo à 4 VLAN ; HAProxy répartit WordPress vers WEB-01 et WEB-02, publie GLPI et répartit le SQL vers 3 nœuds Galera" width="900" height="640" loading="lazy">
-          <figcaption>Vue d'ensemble : tout flux entre VLAN traverse pfSense ; HAProxy est le point d'entrée unique des services.</figcaption>
+          <img src="/assets/img/ha/architecture.svg?v=20261106" alt="Schéma : pfSense relie le réseau labo à 4 VLAN ; HAProxy répartit WordPress vers WEB-01 et WEB-02 et envoie le SQL au nœud Galera actif ; dans la zone d'administration, ADM-01, Guacamole et ZABBIX, qui reçoit les journaux des serveurs" width="900" height="700" loading="lazy">
+          <figcaption>Vue d'ensemble : tout flux entre VLAN traverse pfSense ; HAProxy est le point d'entrée unique des services ; ZABBIX supervise et centralise les journaux.</figcaption>
         </figure>
         <p class="ha-text">Pour voir les flux circuler, ouvrir la fiche de chaque machine et simuler une panne : <a href="/infra">le schéma interactif →</a></p>
 
@@ -95,20 +96,22 @@
               <tr class="cat-row"><td colspan="4">VLAN 302 · vBDD · 10.0.20.0/24</td></tr>
               <tr><td>MYSQL-01 / 02 / 03</td><td><code>10.0.20.1 – .3</code></td><td>302</td><td>MariaDB 10.11 + Galera 4</td></tr>
               <tr class="cat-row"><td colspan="4">VLAN 303 · vADMIN · 10.0.30.0/24 — VLAN 304 · vUSER · 10.0.40.0/24</td></tr>
-              <tr><td>ADM-01</td><td><code>10.0.30.1</code></td><td>303</td><td>Poste d'administration, tests</td></tr>
+              <tr><td>ADM-01</td><td><code>10.0.30.1</code></td><td>303</td><td>Contrôleur de domaine Active Directory <code>paugy.lan</code></td></tr>
               <tr><td>Guacamole</td><td><code>10.0.30.2</code></td><td>303</td><td>Bastion d'accès distant</td></tr>
-              <tr><td>pfSense</td><td><code>WAN 10.4.0.198</code></td><td>trunk</td><td>Routage inter-VLAN, NAT <code>:8081 → 10.0.10.2:80</code> et <code>:8082 → 10.0.10.2:8080</code>, filtrage</td></tr>
+              <tr><td>ZABBIX</td><td><code>10.0.30.3</code></td><td>303</td><td>Supervision Zabbix (12 hôtes) et journaux centralisés : Rsyslog + LogAnalyzer</td></tr>
+              <tr><td>CLI-01</td><td><code>10.0.40.1</code></td><td>304</td><td>Poste Windows membre du domaine</td></tr>
+              <tr><td>pfSense</td><td><code>WAN 10.4.0.198</code></td><td>trunk</td><td>Routage inter-VLAN, NAT <code>:8081 → 10.0.10.2:80</code> (WordPress), <code>:8082 → 10.0.10.3:80</code> (GLPI), <code>:2231</code> (Zabbix), <code>:2233</code> (LogAnalyzer), filtrage</td></tr>
             </tbody>
           </table>
         </div>
 
         <div class="grid grid-2 ha-figs">
           <figure class="ha-figure">
-            <img src="/assets/img/ha/vlans.svg" alt="Segmentation en 4 VLAN sur un trunk 802.1Q" width="760" height="420" loading="lazy">
+            <img src="/assets/img/ha/vlans.svg?v=20261106" alt="Segmentation en 4 VLAN sur un trunk 802.1Q" width="760" height="420" loading="lazy">
             <figcaption>Segmentation : trunk 802.1Q vers pfSense, étiquettes posées par Proxmox.</figcaption>
           </figure>
           <figure class="ha-figure">
-            <img src="/assets/img/ha/wordpress-flow.svg" alt="Parcours d'une requête WordPress de bout en bout" width="820" height="340" loading="lazy">
+            <img src="/assets/img/ha/wordpress-flow.svg?v=20261106" alt="Parcours d'une requête WordPress de bout en bout" width="820" height="340" loading="lazy">
             <figcaption>Parcours d'une requête WordPress, du client jusqu'à la base.</figcaption>
           </figure>
         </div>
@@ -121,7 +124,7 @@
           <div class="card">
             <div class="icon-badge">🌐</div>
             <h3>Couche web</h3>
-            <p class="ha-text">WEB-01 et WEB-02 servent le même site. HAProxy teste <code>/wp-login.php</code> toutes les 3 s : après 3 échecs (~9 s), le serveur est retiré ; après 2 succès (~6 s), il est réintégré. Pendant la détection, les requêtes échouées sont rejouées sur l'autre serveur.</p>
+            <p class="ha-text">WEB-01 et WEB-02 servent le même site. HAProxy teste chaque serveur toutes les 2 s : après 3 échecs, il est retiré (mesuré : 9 s, 6 requêtes sur 6 servies par l'autre serveur) ; après 2 succès, il est réintégré.</p>
           </div>
           <div class="card">
             <div class="icon-badge">🗄️</div>
@@ -131,25 +134,54 @@
           <div class="card">
             <div class="icon-badge">🔀</div>
             <h3>Point d'entrée unique</h3>
-            <p class="ha-text">Applications et clients ne connaissent que <code>10.0.10.2</code>. WordPress et GLPI se connectent à la base via <code>10.0.10.2:3306</code> : si un nœud tombe, HAProxy l'écarte sans toucher aux applications.</p>
+            <p class="ha-text">Applications et clients ne connaissent que <code>10.0.10.2</code>. WordPress et GLPI se connectent à la base via <code>10.0.10.2:3306</code>. Les requêtes vont à MYSQL-01, les deux autres nœuds restent en secours (pas de conflit d'écriture) : si MYSQL-01 tombe, HAProxy bascule sans toucher aux applications.</p>
           </div>
         </div>
         <div class="grid grid-2 ha-figs">
           <figure class="ha-figure">
-            <img src="/assets/img/ha/failover-web.svg" alt="Bascule automatique : nominal, panne de WEB-01, réintégration" width="780" height="330" loading="lazy">
+            <img src="/assets/img/ha/failover-web.svg?v=20261106" alt="Bascule automatique : nominal, panne de WEB-01, réintégration" width="780" height="330" loading="lazy">
             <figcaption>Bascule automatique d'un serveur web.</figcaption>
           </figure>
           <figure class="ha-figure">
-            <img src="/assets/img/ha/galera-flow.svg" alt="Cycle d'une écriture dans Galera : diffusion du write-set, certification, validation" width="760" height="340" loading="lazy">
+            <img src="/assets/img/ha/galera-flow.svg?v=20261106" alt="Cycle d'une écriture dans Galera : diffusion du write-set, certification, validation" width="760" height="340" loading="lazy">
             <figcaption>Cycle d'une écriture dans le cluster Galera.</figcaption>
           </figure>
         </div>
         <div class="note">💡 <strong>Haute disponibilité ≠ sauvegarde.</strong> Un <code>DROP TABLE</code> accidentel est répliqué instantanément sur les 3 nœuds : seule une sauvegarde permet de revenir en arrière.</div>
       </div>
 
+      <!-- ===================== SUPERVISION ET JOURNAUX ===================== -->
+      <div class="res-section reveal" id="supervision">
+        <h2>📡 Supervision et journaux</h2>
+        <p class="ha-text">La haute disponibilité cache les pannes : un cluster peut tourner sur 2 nœuds sans que personne ne le voie. La VM <strong>ZABBIX</strong> (<code>10.0.30.3</code>, zone d'administration) surveille donc les 12 VM et réunit leurs journaux, sans VM ni adresse supplémentaire : trois services, chacun sur son port.</p>
+        <div class="grid grid-3">
+          <div class="card">
+            <div class="icon-badge">📊</div>
+            <h3>Zabbix 7.0 LTS</h3>
+            <p class="ha-text">12 hôtes supervisés : agent sur les 8 VM Linux, ping pour pfSense et l'annuaire. Interface publiée sur <code>:2231</code>. Prochaine étape : les alertes.</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge">📥</div>
+            <h3>Rsyslog central</h3>
+            <p class="ha-text">Les <strong>8 VM Linux</strong> envoient automatiquement une copie de leurs journaux en TCP 514. pfSense n'ouvre ce port qu'aux serveurs prévus, et jamais sur le WAN.</p>
+          </div>
+          <div class="card">
+            <div class="icon-badge">🔎</div>
+            <h3>LogAnalyzer</h3>
+            <p class="ha-text">Lecture des journaux de toutes les machines au même endroit. Accès par <code>:2233</code>, avec un compte et depuis un réseau d'administration seulement.</p>
+          </div>
+        </div>
+        <figure class="ha-figure">
+          <img src="/assets/img/ha/journalisation.svg?v=20261106" alt="Journalisation centralisée : les serveurs vWEB et vBDD envoient leurs journaux en TCP 514 à travers pfSense vers ZABBIX ; Rsyslog écrit dans central.log, lu par LogAnalyzer publié sur le port 2233" width="920" height="640" loading="lazy">
+          <figcaption>Journalisation centralisée au 06/11/2026 : en vert ce qui est testé, en pointillés ce qui reste à faire.</figcaption>
+        </figure>
+        <div class="note">⚠️ <strong>Limites assumées :</strong> LogAnalyzer est en HTTP avec authentification Basic (accès de laboratoire, à chiffrer par VPN ou HTTPS) ; les journaux de pfSense et des postes Windows ne sont pas encore collectés ; supervision et journaux partagent la même VM.</div>
+      </div>
+
       <!-- ===================== PROCÉDURES ===================== -->
       <div class="res-section reveal" id="procedures">
         <h2>📘 Procédures</h2>
+        <div class="note">ℹ️ Ces procédures sont la <strong>configuration de référence</strong> du dépôt public. Dans le labo, quelques réglages diffèrent : contrôle HTTP de <code>/</code> toutes les 2 s, pas encore de page de statistiques (8404) ni d'en-tête <code>X-Served-By</code>, SQL envoyé à MYSQL-01 seul (les deux autres en secours), fichiers WordPress pas encore synchronisés.</div>
         <p class="ha-text">Chaque commande indique la machine sur laquelle elle s'exécute. Les mots de passe sont remplacés par <code>&lt;PASSWORD&gt;</code>. Version complète, avec les fichiers de configuration et les scripts : <a href="https://github.com/Paugyy/bts-sio-ha-infrastructure/tree/main/docs" target="_blank" rel="noopener noreferrer">documentation sur GitHub ↗</a>.</p>
 
         <details class="guide">
@@ -183,12 +215,12 @@
           <div class="guide-body">
             <h4>VLAN</h4>
             <ol>
-              <li><strong>Proxmox</strong> : cocher <em>VLAN aware</em> sur <code>vmbr1</code>. La carte de pfSense reste <strong>sans tag</strong> (elle reçoit le trunk) ; chaque VM reçoit le tag de son VLAN (<em>Hardware → Network Device → VLAN Tag</em>).</li>
+              <li><strong>Proxmox</strong> : cocher <em>VLAN aware</em> sur <code>vmbr0</code>. La carte de pfSense reste <strong>sans tag</strong> (elle reçoit le trunk) ; chaque VM reçoit le tag de son VLAN (<em>Hardware → Network Device → VLAN Tag</em>).</li>
               <li><strong>pfSense</strong>, <em>Interfaces → Assignments → VLANs</em> : créer 301, 302, 303 et 304 sur <code>vtnet1</code>.</li>
               <li>Assigner chaque VLAN à une interface, l'activer, IP statique : <code>10.0.10.254/24</code>, <code>10.0.20.254/24</code>, <code>10.0.30.254/24</code>, <code>10.0.40.254/24</code>.</li>
             </ol>
 <pre class="code"><span class="c"># SUR L'HÔTE PROXMOX : poser le tag 302 sur la VM MYSQL-01 (VMID 105)</span>
-qm set 105 --net0 virtio,bridge=vmbr1,tag=302
+qm set 105 --net0 virtio,bridge=vmbr0,tag=302
 <span class="c"># SUR MYSQL-01 : vérifier</span>
 ping -c 2 10.0.20.254</pre>
             <h4>NAT vers HAProxy</h4>
@@ -430,7 +462,7 @@ sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
       <!-- ===================== TESTS ===================== -->
       <div class="res-section reveal" id="tests">
         <h2>✅ Tests</h2>
-        <p class="ha-text">Une matrice de <strong>20 tests</strong> (T01 à T20) couvre le réseau, SSH, Galera, HAProxy, WordPress, GLPI, le NAT, le filtrage et les pannes. Les scripts Bash du dépôt affichent un résultat clair :</p>
+        <p class="ha-text">Une matrice de <strong>35 tests</strong> (T01 à T35) couvre le réseau, SSH, Galera, HAProxy, WordPress, GLPI, le NAT, le filtrage, les pannes, la supervision et les journaux centralisés. Les scripts Bash du dépôt affichent un résultat clair :</p>
 <pre class="code">[INFO] Checking Galera status on local...
 [OK]   wsrep_cluster_size = 3
 [OK]   wsrep_cluster_status = Primary
@@ -445,6 +477,7 @@ sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
               <tr><td>Retour d'un serveur</td><td><code>systemctl start apache2</code></td><td>Réintégré automatiquement en ~6 s</td></tr>
               <tr><td>Panne d'un nœud Galera</td><td><code>systemctl stop mariadb</code></td><td>Cluster à 2 nœuds, toujours Primary, site en ligne</td></tr>
               <tr><td>Flux interdits</td><td><code>nc -zv 10.0.20.1 3306</code> depuis vUSER</td><td>Bloqué par pfSense</td></tr>
+              <tr><td>Journaux centralisés</td><td><code>logger -t SYSLOG-AUTO "TEST AUTOMATIQUE DEPUIS $(hostname)"</code> sur les 8 VM Linux</td><td>8 messages sur 8 visibles dans LogAnalyzer (réussi le 06/11/2026)</td></tr>
             </tbody>
           </table>
         </div>
@@ -463,6 +496,8 @@ sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
           <div class="card ha-incident"><h3>SSH « Permission denied (publickey) »</h3><p><strong>Cause :</strong> clé privée placée dans <code>authorized_keys</code>, qui ne doit contenir que des clés <strong>publiques</strong>.<br><strong>Solution :</strong> <code>ssh-copy-id</code> avec la clé publique, nouvelle paire de clés.</p></div>
           <div class="card ha-incident"><h3>« REMOTE HOST IDENTIFICATION HAS CHANGED »</h3><p><strong>Cause :</strong> VM réinstallée, donc nouvelle clé d'hôte.<br><strong>Solution :</strong> empreinte vérifiée depuis la console Proxmox <strong>avant</strong> <code>ssh-keygen -R</code> (c'est aussi le symptôme d'une attaque).</p></div>
           <div class="card ha-incident"><h3>Conflit avec le compte « haproxy »</h3><p><strong>Cause :</strong> utilisateur humain nommé <code>haproxy</code>, comme le compte système du service.<br><strong>Solution :</strong> compte d'administration <code>haproxyadmin</code>, compte système laissé au paquet.</p></div>
+          <div class="card ha-incident"><h3>LogAnalyzer : « 403 Forbidden »</h3><p><strong>Cause :</strong> Apache n'autorisait que la zone d'administration ; le NAT de pfSense garde l'adresse du poste, qui était donc refusée (<code>AH01630</code>).<br><strong>Solution :</strong> réseau du poste ajouté à <code>Require ip</code>, en gardant l'authentification obligatoire (<code>Require valid-user</code>).</p></div>
+          <div class="card ha-incident"><h3>Journaux : rien n'arrive du serveur web</h3><p><strong>Cause :</strong> le fichier de transfert <code>90-centralisation.conf</code> existait, mais le paquet <strong>Rsyslog</strong> n'était pas installé sur la Debian.<br><strong>Solution :</strong> <code>apt install rsyslog</code>, service activé, puis test <code>logger</code> : 8 VM sur 8 reçues.</p></div>
         </div>
       </div>
 
@@ -471,7 +506,7 @@ sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
         <h2>⚠️ Limites et améliorations</h2>
         <div class="grid grid-2">
           <figure class="ha-figure">
-            <img src="/assets/img/ha/spof.svg" alt="Carte des SPOF : hôte Proxmox, pfSense, HAProxy et GLPI uniques ; web et Galera redondés" width="780" height="380" loading="lazy">
+            <img src="/assets/img/ha/spof.svg?v=20261106" alt="Carte des SPOF : hôte Proxmox, pfSense, HAProxy et GLPI uniques ; web et Galera redondés" width="780" height="380" loading="lazy">
             <figcaption>Points uniques de défaillance restants, identifiés et assumés.</figcaption>
           </figure>
           <div class="card">
@@ -480,7 +515,7 @@ sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
               <li><strong>HAProxy unique</strong> → second HAProxy + Keepalived (IP virtuelle partagée).</li>
               <li><strong>pfSense unique</strong> → deux pare-feu en CARP.</li>
               <li><strong>Health-check SQL</strong> → vérifier l'état Galera (Synced), pas seulement que MariaDB répond.</li>
-              <li><strong>Fichiers WordPress</strong> → stockage partagé (NFS, GlusterFS) au lieu de rsync.</li>
+              <li><strong>Fichiers WordPress</strong> → synchronisation planifiée ou stockage partagé (NFS, GlusterFS) : pas encore en place.</li>
               <li><strong>HTTPS</strong>, <strong>alertes</strong> Zabbix, <strong>sauvegardes automatisées</strong>.</li>
               <li><strong>Journaux</strong> : les 8 serveurs Linux sont centralisés (Rsyslog + LogAnalyzer) ; restent pfSense, les postes Windows et un accès chiffré.</li>
               <li><strong>Un seul hôte Proxmox</strong> : la redondance est logique, pas physique.</li>
