@@ -157,7 +157,7 @@
           <div class="guide-body">
             <p>L'ordre suit les dépendances : le réseau avant les serveurs, la base avant les applications, les tests de panne à la fin. Chaque étape est validée avant de passer à la suivante.</p>
             <ol>
-              <li><strong>Proxmox</strong> : 10 VM créées, bridge <code>vmbr1</code> « VLAN aware ».</li>
+              <li><strong>Proxmox</strong> : 12 VM créées, bridge <code>vmbr0</code> « VLAN aware ».</li>
               <li><strong>pfSense</strong> installé, WAN <code>10.4.0.198</code>.</li>
               <li><strong>VLAN</strong> 301 à 304 : chaque VM pingue sa passerelle <code>.254</code>.</li>
               <li><strong>MYSQL-01</strong> : MariaDB installé, <code>bind-address = 10.0.20.1</code>.</li>
@@ -481,7 +481,8 @@ sudo sshd -t &amp;&amp; sudo systemctl reload ssh</pre>
               <li><strong>pfSense unique</strong> → deux pare-feu en CARP.</li>
               <li><strong>Health-check SQL</strong> → vérifier l'état Galera (Synced), pas seulement que MariaDB répond.</li>
               <li><strong>Fichiers WordPress</strong> → stockage partagé (NFS, GlusterFS) au lieu de rsync.</li>
-              <li><strong>HTTPS</strong>, <strong>supervision</strong> (Zabbix, Prometheus + Grafana), <strong>sauvegardes automatisées</strong>.</li>
+              <li><strong>HTTPS</strong>, <strong>alertes</strong> Zabbix, <strong>sauvegardes automatisées</strong>.</li>
+              <li><strong>Journaux</strong> : les 8 serveurs Linux sont centralisés (Rsyslog + LogAnalyzer) ; restent pfSense, les postes Windows et un accès chiffré.</li>
               <li><strong>Un seul hôte Proxmox</strong> : la redondance est logique, pas physique.</li>
             </ul>
           </div>

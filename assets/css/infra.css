@@ -13,6 +13,7 @@
   --k-galera: #a78bfa;
   --k-ssh: #34d399;
   --k-ad: #fbbf24;
+  --k-log: #fb923c;
   --ko: #f87171;
 }
 .z-web { --z: var(--z-web); }
@@ -25,6 +26,7 @@
 .k-galera { --k: var(--k-galera); }
 .k-ssh { --k: var(--k-ssh); }
 .k-ad { --k: var(--k-ad); }
+.k-log { --k: var(--k-log); }
 
 /* Sommaire non collant sur cette page : il masquerait les boutons de scénario */
 .infra .toc { position: static; }

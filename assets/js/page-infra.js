@@ -31,7 +31,8 @@
     mysql2: { x: 506, y: 420, w: 188, h: 66 },
     mysql3: { x: 506, y: 540, w: 188, h: 66 },
     adm01: { x: 766, y: 300, w: 168, h: 66 },
-    guac: { x: 766, y: 470, w: 168, h: 66 },
+    guac: { x: 766, y: 420, w: 168, h: 66 },
+    zabbix: { x: 766, y: 540, w: 168, h: 66 },
     cli01: { x: 1006, y: 300, w: 138, h: 66 },
   };
   const KIND = {
@@ -40,6 +41,7 @@
     galera: { label: "Réplication" },
     ssh: { label: "Administration" },
     ad: { label: "Annuaire" },
+    log: { label: "Journaux" },
   };
 
   const byId = Object.fromEntries(INFRA.nodes.map(n => [n.id, n]));
@@ -116,11 +118,11 @@
 
     // Encadré NAT
     const nat = svg("g", { class: "infra-nat" });
-    nat.append(svg("rect", { x: 930, y: 26, width: 240, height: 100, rx: 14 }));
+    nat.append(svg("rect", { x: 930, y: 26, width: 240, height: 50 + INFRA.nat.length * 15, rx: 14 }));
     nat.append(svg("text", { x: 946, y: 48, class: "infra-nat-title" }, `Publication NAT · ${INFRA.wan.fw}`));
     INFRA.nat.forEach((n, i) => {
-      nat.append(svg("text", { x: 946, y: 68 + i * 16, class: "infra-mono" }, `${n.port} → ${n.target}`));
-      nat.append(svg("text", { x: 1158, y: 68 + i * 16, class: "infra-note", "text-anchor": "end" }, n.label));
+      nat.append(svg("text", { x: 946, y: 68 + i * 15, class: "infra-mono" }, `${n.port} → ${n.target}`));
+      nat.append(svg("text", { x: 1158, y: 68 + i * 15, class: "infra-note", "text-anchor": "end" }, n.label));
     });
     gLinks.append(nat);
 

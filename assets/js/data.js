@@ -154,7 +154,7 @@ const PROJECTS_ECOLE = [
     icon: "⚖️",
     color: COLORS.green,
     summary: "Site WordPress sur 2 serveurs web derrière HAProxy, base MariaDB Galera répliquée sur 3 nœuds, GLPI, 4 VLAN filtrés par pfSense.",
-    description: "Dans une installation classique, un site repose sur un seul serveur web et une seule base de données : la moindre panne arrête tout. J'ai conçu et déployé sur Proxmox une infrastructure de 10 VM qui supprime ces points uniques de défaillance sur les couches web et données. L'arrêt d'un serveur web ou d'un nœud de base de données n'interrompt pas le service. Tout est documenté et versionné sur GitHub : procédures, configurations anonymisées, scripts de tests, journal d'incidents.",
+    description: "Dans une installation classique, un site repose sur un seul serveur web et une seule base de données : la moindre panne arrête tout. J'ai conçu et déployé sur Proxmox une infrastructure de 12 VM qui supprime ces points uniques de défaillance sur les couches web et données. L'arrêt d'un serveur web ou d'un nœud de base de données n'interrompt pas le service. Zabbix supervise l'ensemble, et les journaux des 8 serveurs Linux sont réunis sur un serveur central consultable dans LogAnalyzer. Tout est documenté et versionné sur GitHub : procédures, configurations anonymisées, scripts de tests, journal d'incidents.",
     objectives: [
       "Garder le site disponible malgré la panne d'un serveur web ou d'une base",
       "Répliquer les données de manière synchrone (aucune perte en cas de panne)",
@@ -167,6 +167,7 @@ const PROJECTS_ECOLE = [
       "HAProxy : répartition HTTP (WordPress, GLPI) et SQL (Galera) avec health-checks",
       "WordPress redondé sur 2 serveurs Apache, base commune via HAProxy, synchronisation des fichiers",
       "GLPI publié via HAProxy, base sur le cluster Galera",
+      "Supervision Zabbix des 12 VM ; journalisation centralisée Rsyslog + LogAnalyzer (8 VM Linux, port 514 jamais publié)",
       "Tests de bascule (panne d'un serveur web, d'un nœud Galera) et 8 incidents résolus et documentés",
       "Dépôt GitHub : documentation complète, scripts Bash de validation, CI GitHub Actions",
     ],
@@ -176,7 +177,7 @@ const PROJECTS_ECOLE = [
       "Exploiter, dépanner et superviser une solution d'infrastructure réseau",
       "Garantir la disponibilité, l'intégrité et la confidentialité des services",
     ],
-    tags: ["HAProxy", "MariaDB Galera", "pfSense", "VLAN", "WordPress", "GLPI", "Debian", "Proxmox"],
+    tags: ["HAProxy", "MariaDB Galera", "pfSense", "VLAN", "WordPress", "GLPI", "Zabbix", "Rsyslog", "Debian", "Proxmox"],
     links: [
       { href: "/projet-ha", label: "Fiche complète et procédures" },
       { href: "/infra", label: "Schéma interactif" },

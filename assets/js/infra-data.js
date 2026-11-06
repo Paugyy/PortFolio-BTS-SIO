@@ -26,15 +26,17 @@ const INFRA = {
 
   nat: [
     { port: "8081", target: "10.0.10.2:80", label: "WordPress" },
-    { port: "8082", target: "10.0.10.2:8080", label: "GLPI" },
+    { port: "8082", target: "10.0.10.3:80", label: "GLPI" },
     { port: "8080", target: "10.0.30.2:8080", label: "Bastion" },
     { port: "2223", target: "10.0.30.2:22", label: "SSH" },
+    { port: "2231", target: "10.0.30.3:80", label: "Zabbix" },
+    { port: "2233", target: "10.0.30.3:8085", label: "Journaux" },
   ],
 
   zones: [
     { id: "web", vlan: 301, name: "WEB", alias: "vWEB", net: "10.0.10.0/24", gw: "10.0.10.254", note: "2 frontaux WordPress + GLPI, derrière HAProxy" },
     { id: "bdd", vlan: 302, name: "BDD", alias: "vBDD", net: "10.0.20.0/24", gw: "10.0.20.254", note: "Cluster Galera · quorum 2 sur 3" },
-    { id: "adm", vlan: 303, name: "ADM", alias: "vADMIN", net: "10.0.30.0/24", gw: "10.0.30.254", note: "Seule zone autorisée en SSH" },
+    { id: "adm", vlan: 303, name: "ADM", alias: "vADMIN", net: "10.0.30.0/24", gw: "10.0.30.254", note: "SSH, supervision et journaux" },
     { id: "usr", vlan: 304, name: "USERS", alias: "vUSER", net: "10.0.40.0/24", gw: "10.0.40.254", note: "Zone sans privilège" },
   ],
 
@@ -42,11 +44,11 @@ const INFRA = {
     {
       id: "fw", name: "pfSense", dns: "fw-01", ip: "10.4.0.198", zone: null, os: "pfSense", order: 1, spof: true,
       role: "Pare-feu, routeur inter-VLAN et NAT. Passerelle (.254) de chaque VLAN.",
-      ports: ["NAT 8081 · 8082 · 8080 · 2223", "DNS 53", "NTP 123", "Interface web 443"],
+      ports: ["NAT 8080 à 8082 · 2223 à 2233", "DNS 53", "NTP 123", "Interface web 80"],
       needs: "L'hôte Proxmox (bridge VLAN-aware)",
       down: "Plus de routage entre VLAN ni de NAT : rien ne passe d'une zone à l'autre.",
       access: [
-        { label: "Interface web pfSense", href: "https://10.0.30.254", scope: "interne", note: "Ouverte depuis vADMIN uniquement (règle 443)." },
+        { label: "Interface web pfSense", href: "http://10.0.30.254", scope: "interne", note: "Ouverte depuis vADMIN (règle 80)." },
       ],
     },
     {
@@ -138,8 +140,20 @@ const INFRA = {
       needs: "HAProxy (SQL et publication), le cluster Galera",
       down: "GLPI est indisponible : frontal unique, limite assumée.",
       access: [
-        { label: "Ouvrir GLPI", href: "http://10.4.0.198:8082", scope: "vpn", note: "Publié par pfSense, servi par HAProxy." },
+        { label: "Ouvrir GLPI", href: "http://10.4.0.198:8082", scope: "vpn", note: "Publié par pfSense directement vers GLPI-01." },
         { label: "GLPI (adresse interne)", href: "http://10.0.10.2:8080", scope: "interne", note: "Depuis CLI-01, ADM-01 ou une session du bastion." },
+      ],
+    },
+    {
+      id: "zabbix", name: "ZABBIX", dns: "zabbix", ip: "10.0.30.3", zone: "adm", os: "Debian", order: 12,
+      role: "Supervision Zabbix des 12 VM et journaux centralisés : Rsyslog reçoit les journaux des 8 VM Linux, LogAnalyzer les affiche.",
+      ports: ["Zabbix 80", "LogAnalyzer 8085", "Syslog 514 (interne)", "SSH 22"],
+      needs: "pfSense ; HAProxy et le cluster Galera pour la base de Zabbix",
+      down: "Plus d'alertes ni de collecte des journaux. Aucun service n'est coupé : les serveurs gardent leurs journaux en file et les renvoient au retour.",
+      access: [
+        { label: "Ouvrir Zabbix", href: "http://10.4.0.198:2231/zabbix/", scope: "vpn" },
+        { label: "Ouvrir LogAnalyzer", href: "http://10.4.0.198:2233/", scope: "vpn", note: "Compte requis, réseaux d'administration seulement." },
+        { label: "SSH de gestion", cmd: "ssh -p 2232 <utilisateur>@10.4.0.198", scope: "cmd" },
       ],
     },
   ],
@@ -202,6 +216,18 @@ const INFRA = {
         { from: "adm01", to: "cli01", kind: "ad", tag: "OK", text: "ADM-01 vérifie le compte et le mot de passe : la session s'ouvre." },
       ],
     },
+    {
+      id: "journaux", label: "Les journaux remontent",
+      intro: "Chaque serveur garde ses journaux et en envoie une copie à un seul serveur. En cas de panne, on lit toute l'histoire au même endroit.",
+      steps: [
+        { from: "web1", to: "zabbix", kind: "log", tag: "TCP 514", text: "WEB-01 envoie une copie de ses journaux au serveur central. pfSense n'ouvre le port 514 qu'aux serveurs prévus." },
+        { from: "mysql1", to: "zabbix", kind: "log", tag: "TCP 514", text: "Les nœuds Galera font de même depuis leur zone : les 8 VM Linux envoient leurs journaux automatiquement." },
+        { from: "guac", to: "zabbix", kind: "log", tag: "TCP 514", text: "Guacamole est dans la même zone que le serveur central : son envoi ne traverse pas pfSense." },
+        { from: "client", to: "lab", kind: "log", tag: "VPN", text: "L'administrateur active le VPN de l'école et ouvre http://10.4.0.198:2233." },
+        { from: "lab", to: "fw", kind: "log", tag: ":2233", text: "pfSense n'accepte ce port que depuis les réseaux d'administration." },
+        { from: "fw", to: "zabbix", kind: "log", tag: "NAT → :8085", text: "LogAnalyzer demande un compte et vérifie l'adresse du poste, puis affiche les journaux de toutes les machines." },
+      ],
+    },
   ],
 
   /* Ordre de mise en place (étape 0 = le socle, pas une VM) */
@@ -217,6 +243,7 @@ const INFRA = {
     { n: 8, title: "Guacamole", node: "guac", why: "Le bastion enregistre ses comptes dans la base." },
     { n: 9, title: "WEB-01", node: "web1", why: "WordPress s'installe par l'adresse publiée." },
     { n: 10, title: "WEB-02", node: "web2", why: "Copie conforme de WEB-01." },
-    { n: 11, title: "GLPI-01", node: "glpi", why: "En dernier : rien d'autre n'en dépend." },
+    { n: 11, title: "GLPI-01", node: "glpi", why: "Rien d'autre n'en dépend." },
+    { n: 12, title: "ZABBIX", node: "zabbix", why: "En dernier, quand tout existe : il surveille les 11 autres VM et réunit leurs journaux." },
   ],
 };
