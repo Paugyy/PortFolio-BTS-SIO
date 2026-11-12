@@ -8,7 +8,7 @@
   <link rel="icon" href="/favicon.ico" sizes="32x32">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <title>Ressources — Yannis Paugy</title>
+  <title>Commandes — Yannis Paugy</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/css/style.css?v=202610081500">
@@ -18,20 +18,20 @@
 <main>
   <header class="page-head container">
     <span class="eyebrow reveal">Boîte à outils</span>
-    <h1 class="title-xl reveal d1">Mes <span class="grad">ressources</span></h1>
-    <p class="lead reveal d2">Les commandes et procédures que j'utilise au quotidien. Clique sur une commande pour la copier.</p>
+    <h1 class="title-xl reveal d1">Mes <span class="grad">commandes</span></h1>
+    <p class="lead reveal d2">Les commandes que j'utilise au quotidien. Clique sur une commande pour la copier. Mes procédures complètes sont dans la rubrique <a href="/procedures">Procédures</a>.</p>
   </header>
 
   <section style="padding-top:10px">
     <div class="container">
-      <input class="search reveal" id="search" type="search" placeholder="🔎  Rechercher une commande, un outil… (ex : ip, docker, vlan)">
+      <input class="search reveal" id="search" type="search" placeholder="🔎  Rechercher une commande (ex : ip, docker, vlan)">
       <nav class="toc reveal" id="toc">
         <a href="#linux">🐧 Linux</a>
         <a href="#windows">🪟 Windows</a>
         <a href="#reseau">📡 Réseau / Cisco</a>
         <a href="#docker">🐳 Docker</a>
         <a href="#git">📦 Git</a>
-        <a href="#guides">📘 Procédures</a>
+        <a href="/procedures">📘 Procédures ↗</a>
       </nav>
 
       <div class="res-section reveal" id="linux"><h2>🐧 Commandes Linux</h2><div class="cmd-table-wrap"><table class="cmd-table" data-src="linux"></table></div></div>
@@ -42,190 +42,19 @@
 
       <!-- ===================== PROCÉDURES ===================== -->
       <div class="res-section reveal" id="guides">
-        <h2>📘 Procédures d'installation &amp; configuration</h2>
-        <div class="note">⚖️ <strong>Nouveau :</strong> les procédures complètes de mon projet haute disponibilité (cluster MariaDB Galera, HAProxy, WordPress sur 2 serveurs, tests de bascule, reprise après panne) sont sur la <a href="/projet-ha">fiche du projet →</a></div>
-
-        <details class="guide">
-          <summary>🔥 pfSense — installation et configuration de base <span class="sub">Pare-feu / routeur</span></summary>
-          <div class="guide-body">
-            <h4>1. Prérequis</h4>
-            <ul>
-              <li>Une VM (Proxmox, VirtualBox, VMware) avec <strong>2 cartes réseau</strong> : WAN (vers Internet) et LAN (réseau interne).</li>
-              <li>1 vCPU, 1 à 2 Go de RAM, 16 Go de disque. ISO téléchargée sur <code>pfsense.org</code>.</li>
-            </ul>
-            <h4>2. Installation</h4>
-            <ol>
-              <li>Démarrer sur l'ISO → <em>Install</em> → partitionnement <strong>Auto (ZFS)</strong> → redémarrer.</li>
-              <li>À la console : « Should VLANs be set up now? » → <code>n</code> (on les fera plus tard).</li>
-              <li>Assigner les interfaces : WAN = <code>vtnet0</code> / <code>em0</code>, LAN = <code>vtnet1</code> / <code>em1</code>.</li>
-              <li>Option <code>2</code> du menu console → définir l'IP du LAN (ex : <code>192.168.10.1/24</code>) et activer le DHCP.</li>
-            </ol>
-            <h4>3. Interface web</h4>
-            <ol>
-              <li>Depuis un poste du LAN : <code>https://192.168.10.1</code> — identifiants par défaut <code>admin</code> / <code>pfsense</code>.</li>
-              <li>Suivre l'assistant : nom d'hôte, DNS, fuseau horaire, <strong>changer le mot de passe admin</strong>.</li>
-            </ol>
-            <h4>4. Créer des VLAN</h4>
-            <ol>
-              <li><em>Interfaces → Assignments → VLANs → Add</em> : interface parent = LAN, tag = <code>10</code>, <code>20</code>…</li>
-              <li><em>Interface Assignments</em> : ajouter chaque VLAN, l'activer, lui donner une IP (ex : <code>10.0.10.1/24</code>).</li>
-              <li><em>Services → DHCP Server</em> : activer le DHCP sur chaque VLAN.</li>
-            </ol>
-            <h4>5. Règles de pare-feu</h4>
-            <ul>
-              <li><em>Firewall → Rules</em> : les règles sont lues <strong>de haut en bas</strong>, la première qui correspond s'applique.</li>
-              <li>Par défaut tout est bloqué sur une nouvelle interface : ajouter une règle <em>Pass</em> explicite.</li>
-              <li>Exemple : bloquer VLAN Invités → LAN, puis autoriser Invités → any (Internet).</li>
-            </ul>
-            <h4>6. Redirection de port (NAT)</h4>
-            <p><em>Firewall → NAT → Port Forward → Add</em> : interface WAN, port <code>443</code> → IP du serveur en DMZ, port <code>443</code>. La règle de pare-feu associée est créée automatiquement.</p>
-            <h4>7. VPN OpenVPN (accès distant)</h4>
-            <ol>
-              <li><em>System → Cert Manager</em> : créer une CA puis un certificat serveur.</li>
-              <li><em>VPN → OpenVPN → Wizards</em> : suivre l'assistant (authentification locale).</li>
-              <li><em>System → Package Manager</em> : installer <code>openvpn-client-export</code> pour générer les fichiers clients.</li>
-            </ol>
-            <div class="note">💡 Toujours faire une sauvegarde : <em>Diagnostics → Backup &amp; Restore</em> avant une grosse modification.</div>
-          </div>
-        </details>
-
-        <details class="guide">
-          <summary>🧭 Apache Guacamole avec Docker <span class="sub">Bastion d'accès RDP / SSH / VNC</span></summary>
-          <div class="guide-body">
-            <p>Guacamole permet d'accéder à ses serveurs depuis un simple navigateur. Il se compose de 3 briques : <strong>guacd</strong> (le moteur qui parle RDP/SSH), <strong>guacamole</strong> (l'interface web) et une <strong>base de données</strong> (utilisateurs et connexions).</p>
-            <h4>1. Préparer le dossier</h4>
-<pre class="code">mkdir -p ~/guacamole/init && cd ~/guacamole
-<span class="c"># Générer le script de création de la base</span>
-docker run --rm guacamole/guacamole:1.5.5 /opt/guacamole/bin/initdb.sh --postgresql > init/initdb.sql</pre>
-            <h4>2. Fichier <code>docker-compose.yml</code></h4>
-<pre class="code">services:
-  guacd:
-    image: guacamole/guacd:1.5.5
-    restart: unless-stopped
-
-  postgres:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: guacamole_db
-      POSTGRES_USER: guacamole_user
-      POSTGRES_PASSWORD: MotDePasseSolide
-    volumes:
-      - ./init:/docker-entrypoint-initdb.d:ro
-      - ./data:/var/lib/postgresql/data
-
-  guacamole:
-    image: guacamole/guacamole:1.5.5
-    restart: unless-stopped
-    depends_on: [guacd, postgres]
-    environment:
-      GUACD_HOSTNAME: guacd
-      POSTGRESQL_HOSTNAME: postgres
-      POSTGRESQL_DATABASE: guacamole_db
-      POSTGRESQL_USER: guacamole_user
-      POSTGRESQL_PASSWORD: MotDePasseSolide
-    ports:
-      - "8080:8080"</pre>
-            <h4>3. Lancer et se connecter</h4>
-<pre class="code">docker compose up -d
-docker compose logs -f guacamole   <span class="c"># vérifier qu'il n'y a pas d'erreur</span></pre>
-            <ol>
-              <li>Ouvrir <code>http://IP_DU_SERVEUR:8080/guacamole</code></li>
-              <li>Identifiants par défaut : <code>guacadmin</code> / <code>guacadmin</code> → <strong>créer un nouvel admin et supprimer guacadmin</strong>.</li>
-              <li><em>Paramètres → Connexions → Nouvelle connexion</em> : protocole RDP, hôte, port 3389, identifiants, et cocher « Ignorer le certificat du serveur » en lab.</li>
-            </ol>
-            <div class="note">🔐 En production : placer Guacamole derrière un reverse proxy HTTPS (Nginx) et activer la double authentification (extension TOTP).</div>
-          </div>
-        </details>
-
-        <details class="guide">
-          <summary>🗂️ Active Directory sur Windows Server <span class="sub">AD DS, DNS, OU, GPO</span></summary>
-          <div class="guide-body">
-            <ol>
-              <li>Donner une <strong>IP fixe</strong> au serveur et le renommer (ex : <code>SRV-AD01</code>), puis redémarrer.</li>
-              <li><em>Gestionnaire de serveur → Ajouter des rôles</em> : cocher <strong>AD DS</strong> (et DNS).</li>
-              <li>Cliquer sur le drapeau → <em>Promouvoir ce serveur en contrôleur de domaine</em> → nouvelle forêt (ex : <code>entreprise.local</code>).</li>
-              <li>Après redémarrage : <em>Utilisateurs et ordinateurs Active Directory</em> → créer des OU (Direction, Compta, Informatique…).</li>
-              <li>Créer utilisateurs et groupes dans les OU.</li>
-              <li><em>Gestion des stratégies de groupe</em> : créer une GPO, la lier à une OU, puis <code>gpupdate /force</code> sur le client.</li>
-              <li>Sur le poste client : DNS = IP du contrôleur de domaine, puis joindre le domaine.</li>
-            </ol>
-<pre class="code"><span class="c"># La même chose en PowerShell</span>
-Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
-Install-ADDSForest -DomainName "entreprise.local"
-New-ADOrganizationalUnit -Name "Informatique"
-New-ADUser -Name "Jean Dupont" -SamAccountName jdupont -Path "OU=Informatique,DC=entreprise,DC=local" -AccountPassword (Read-Host -AsSecureString) -Enabled $true
-Add-Computer -DomainName entreprise.local -Restart   <span class="c"># sur le client</span></pre>
-          </div>
-        </details>
-
-        <details class="guide">
-          <summary>🖥️ Proxmox VE — créer une VM Debian <span class="sub">Virtualisation</span></summary>
-          <div class="guide-body">
-            <ol>
-              <li>Téléverser l'ISO : <em>local → ISO Images → Upload</em>.</li>
-              <li><em>Create VM</em> : nom, ISO, disque (VirtIO SCSI), CPU (type <code>host</code>), RAM, réseau (<code>vmbr0</code>, modèle VirtIO).</li>
-              <li>Installer Debian (sans environnement de bureau, cocher « serveur SSH »).</li>
-              <li>Installer l'agent : <code>apt install qemu-guest-agent</code> puis l'activer dans <em>Options → QEMU Guest Agent</em>.</li>
-              <li>Transformer une VM propre en <strong>Template</strong> pour cloner rapidement les suivantes.</li>
-              <li>Programmer des sauvegardes : <em>Datacenter → Backup</em>.</li>
-            </ol>
-          </div>
-        </details>
-
-        <details class="guide">
-          <summary>🔑 SSH par clé (sans mot de passe) <span class="sub">Sécurisation serveur</span></summary>
-          <div class="guide-body">
-<pre class="code"><span class="c"># Sur MON poste : créer une paire de clés</span>
-ssh-keygen -t ed25519 -C "yannis@poste"
-<span class="c"># Envoyer la clé publique au serveur</span>
-ssh-copy-id -i ~/.ssh/id_ed25519.pub user@IP_SERVEUR
-<span class="c"># Sur le SERVEUR : désactiver la connexion par mot de passe et root</span>
-sudo nano /etc/ssh/sshd_config
-  PasswordAuthentication no
-  PermitRootLogin no
-sudo systemctl restart ssh</pre>
-            <div class="note">⚠️ Tester la connexion par clé dans un <strong>second terminal</strong> avant de fermer le premier, sinon risque de se bloquer dehors.</div>
-          </div>
-        </details>
-
-        <details class="guide">
-          <summary>🐳 Installer Docker sur Debian <span class="sub">Conteneurs</span></summary>
-          <div class="guide-body">
-<pre class="code">sudo apt update && sudo apt install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list
-sudo apt update && sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-sudo usermod -aG docker $USER   <span class="c"># puis se déconnecter / reconnecter</span>
-docker run hello-world</pre>
-          </div>
-        </details>
-
-        <details class="guide">
-          <summary>🎫 GLPI sur Debian (LAMP) <span class="sub">Gestion de parc &amp; tickets</span></summary>
-          <div class="guide-body">
-<pre class="code">sudo apt install -y apache2 mariadb-server php php-{mysql,curl,gd,intl,xml,mbstring,zip,bz2,ldap,bcmath}
-sudo mysql_secure_installation
-sudo mysql -e "CREATE DATABASE glpi; CREATE USER 'glpi'@'localhost' IDENTIFIED BY 'MotDePasse'; GRANT ALL ON glpi.* TO 'glpi'@'localhost';"
-<span class="c"># Télécharger la dernière version sur github.com/glpi-project/glpi/releases</span>
-sudo tar -xzf glpi-*.tgz -C /var/www/html/
-sudo chown -R www-data:www-data /var/www/html/glpi</pre>
-            <ol>
-              <li>Ouvrir <code>http://IP/glpi</code> et suivre l'assistant (base <code>glpi</code>).</li>
-              <li>Comptes par défaut : <code>glpi/glpi</code> (admin) — <strong>changer tous les mots de passe</strong> et supprimer <code>install/install.php</code>.</li>
-              <li>Installer l'agent GLPI sur les postes pour l'inventaire automatique.</li>
-            </ol>
-          </div>
-        </details>
-
-        <p class="empty" id="empty" hidden>Aucun résultat pour cette recherche.</p>
+        <h2>📘 Procédures</h2>
+        <div class="card" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+          <p style="margin:0;color:var(--text-soft);max-width:60ch">Mes procédures (infrastructure haute disponibilité et guides de base) ont leur propre rubrique : à lire en ligne ou à télécharger en PDF et en Markdown.</p>
+          <a class="btn btn-grad" href="/procedures">Voir mes procédures →</a>
+        </div>
       </div>
+
+      <p class="empty" id="empty" hidden>Aucun résultat pour cette recherche.</p>
     </div>
   </section>
 </main>
 
-<script src="/assets/js/main.js?v=202610211110"></script>
+<script src="/assets/js/main.js?v=202611121800"></script>
 <script src="/assets/js/page-ressources.js?v=202610081500"></script>
 <script type="module" src="/assets/js/scene.js?v=202610081500"></script>
 </body>

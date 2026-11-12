@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="description" content="Toutes les procédures de Yannis Paugy (BTS SIO SISR) : modes opératoires de son infrastructure haute disponibilité et guides de base, à consulter en ligne ou à télécharger en PDF et Markdown.">
+  <title>Procédures — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202610081500">
+  <link rel="stylesheet" href="/assets/css/theme.css?v=202610081500">
+  <link rel="stylesheet" href="/assets/css/procedures.css?v=202611121800">
+</head>
+<body>
+<main>
+  <header class="page-head container">
+    <span class="eyebrow reveal">Reproduire mon travail</span>
+    <h1 class="title-xl reveal d1">Mes <span class="grad">procédures</span></h1>
+    <p class="lead reveal d2">Toutes mes procédures au même endroit : à lire en ligne, ou à télécharger en PDF et en Markdown pour refaire ce que j'ai fait.</p>
+  </header>
+
+  <section style="padding-top:10px">
+    <div class="container">
+      <div class="pr-top reveal">
+        <div class="card pr-intro">
+          <p><strong>Mon infrastructure haute disponibilité</strong> : les modes opératoires réels de mon laboratoire Proxmox (pare-feu, grappe de bases de données, répartiteur, applications web, supervision, sauvegarde), suivis du plan de tests et des incidents résolus.</p>
+          <p><strong>Guides de base</strong> : des procédures courtes et génériques pour installer un service à partir de zéro.</p>
+          <p>Pour l'ordre de mise en place des machines, voir le <a href="/infra">schéma interactif</a> ; pour le contexte et les résultats, la <a href="/projet-ha">fiche du projet</a>.</p>
+        </div>
+        <div class="card">
+          <div class="pr-kpis" id="pr-kpis"></div>
+          <a class="btn btn-grad pr-zip" id="pr-zip" href="/assets/docs/procedures/procedures-yannis-paugy.zip" download>⬇ Tout télécharger <small id="pr-zip-size"></small></a>
+        </div>
+      </div>
+
+      <div class="pr-tools reveal">
+        <input class="search" id="pr-search" type="search" placeholder="🔎  Rechercher une procédure (ex : galera, ssh, sauvegarde, vlan)">
+        <div class="filters" id="pr-filters"></div>
+      </div>
+
+      <div class="pr-group" id="groupe-labo">
+        <div class="pr-group-head"><h2>🏗️ Mon infrastructure haute disponibilité</h2><span id="pr-count-labo"></span></div>
+        <p>Rédigées pendant la mise en place de mon laboratoire (dossier E6). Les adresses IP sont celles de mon labo : adapte-les au tien.</p>
+        <div class="pr-grid" id="pr-labo"></div>
+      </div>
+
+      <div class="pr-group" id="groupe-guide">
+        <div class="pr-group-head"><h2>📘 Guides de base</h2><span id="pr-count-guide"></span></div>
+        <p>Des procédures courtes pour installer un service de zéro, sur n'importe quel environnement de test.</p>
+        <div class="pr-grid" id="pr-guide"></div>
+      </div>
+
+      <p class="empty" id="pr-empty" hidden>Aucune procédure ne correspond à cette recherche.</p>
+    </div>
+  </section>
+</main>
+
+<script src="/assets/js/procedures-data.js?v=202611121800"></script>
+<script src="/assets/js/main.js?v=202611121800"></script>
+<script src="/assets/js/page-procedures.js?v=202611121800"></script>
+<script type="module" src="/assets/js/scene.js?v=202610081500"></script>
+</body>
+</html>

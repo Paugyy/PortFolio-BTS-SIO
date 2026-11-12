@@ -1,0 +1,574 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 10/10/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Connexion par clé, durcissement des serveurs, comptes à privilèges minimaux, gestion des secrets.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+<p>⚠️ <strong>Écarts avec le labo réel</strong> (configuration relevée le 01/10/2026, voir le DAT §7.2) :
+HAProxy contrôle ses serveurs <strong>toutes les 2 s</strong> (<code>inter 2s fall 3 rise 2</code>), le contrôle SQL est un simple
+test de port (<code>tcp-check</code>, pas <code>mysql-check</code>), et il n'y a <strong>ni page de statistiques (8404) ni en-tête
+<code>X-Served-By</code></strong> : les passages qui les citent décrivent une cible, pas l'existant. adm-01 est le contrôleur
+de domaine Windows : les commandes notées « sur adm-01 » se jouent depuis une session du bastion Guacamole.</p>
+</blockquote>
+<hr />
+<h2 id="securite-ssh">Sécurité — SSH</h2>
+<h3 id="principes">Principes</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Raison</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Authentification <strong>par clé</strong> uniquement</td>
+<td>Pas de mot de passe à deviner ou à intercepter</td>
+</tr>
+<tr>
+<td>Pas de connexion <code>root</code></td>
+<td>Traçabilité (qui a fait quoi) et <code>sudo</code> journalisé</td>
+</tr>
+<tr>
+<td>SSH accepté <strong>depuis vADMIN</strong> uniquement</td>
+<td>Règles pfSense + <code>AllowUsers</code>/pare-feu local</td>
+</tr>
+<tr>
+<td>Clé <strong>ed25519</strong> protégée par une phrase de passe</td>
+<td>Algorithme moderne ; clé volée inutilisable seule</td>
+</tr>
+<tr>
+<td>Vérification des empreintes d'hôte</td>
+<td>Protection contre l'usurpation de serveur</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="cle-publique-ou-cle-privee">Clé publique ou clé privée ?</h3>
+<pre><code class="language-text">Poste d'administration                              Serveur (ex. bdd-01)
+~/.ssh/id_ed25519      ← clé PRIVÉE : ne sort jamais du poste
+~/.ssh/id_ed25519.pub  ── copiée vers ──►   ~/.ssh/authorized_keys
+                                              (liste des clés PUBLIQUES autorisées)
+</code></pre>
+<ul>
+<li><code>authorized_keys</code> contient des <strong>clés publiques</strong> : il dit « j'accepte toute personne capable de prouver qu'elle détient la clé privée correspondante ».</li>
+<li>La clé <strong>privée</strong> ne doit <strong>jamais</strong> être copiée sur un serveur ni dans ce dépôt. La coller dans <code>authorized_keys</code> est une erreur : la connexion échoue (<code>Permission denied (publickey)</code>) et la clé privée est exposée. Voir <a href="/procedure?id=depannage">INC-06</a>.</li>
+</ul>
+<h3 id="mise-en-place">Mise en place</h3>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">ssh-keygen -t ed25519 -C &quot;adm01-admin&quot;           # phrase de passe recommandée
+ssh-copy-id &lt;ADMIN_USER&gt;@10.0.20.1               # ajoute la clé PUBLIQUE dans authorized_keys
+ssh &lt;ADMIN_USER&gt;@10.0.20.1                       # test
+cp configs/ssh/linux-ssh-config.example ~/.ssh/config &amp;&amp; chmod 600 ~/.ssh/config
+ssh mysql01                                      # alias défini dans ~/.ssh/config
+</code></pre>
+<p><strong>SUR CHAQUE VM</strong> — après avoir vérifié que la connexion par clé fonctionne :</p>
+<pre><code class="language-bash">sudo nano /etc/ssh/sshd_config.d/10-hardening.conf
+</code></pre>
+<pre><code class="language-text">PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+MaxAuthTries 3
+X11Forwarding no
+</code></pre>
+<pre><code class="language-bash">sudo sshd -t &amp;&amp; sudo systemctl reload ssh
+</code></pre>
+<blockquote>
+<p>Garder une session SSH ouverte pendant la modification : en cas d'erreur, elle permet de corriger sans passer par la console Proxmox.</p>
+</blockquote>
+<h3 id="avertissement-remote-host-identification-has-changed">Avertissement « REMOTE HOST IDENTIFICATION HAS CHANGED »</h3>
+<p>SSH mémorise l'empreinte de chaque serveur dans <code>~/.ssh/known_hosts</code>. Si elle change, SSH <strong>refuse</strong> la connexion : c'est exactement ce qui se produirait lors d'une attaque de l'homme du milieu.</p>
+<p>Avant de supprimer l'ancienne empreinte avec <code>ssh-keygen -R</code>, <strong>vérifier la cause</strong> :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Cause légitime</th>
+<th>Vérification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM réinstallée ou recréée</td>
+<td>Vous l'avez fait vous-même, récemment</td>
+</tr>
+<tr>
+<td>IP réattribuée à une autre VM</td>
+<td>Plan d'adressage, Proxmox</td>
+</tr>
+<tr>
+<td>Clés d'hôte régénérées</td>
+<td>Historique d'administration</td>
+</tr>
+</tbody>
+</table></div>
+<p>Comparer avec l'empreinte réelle, lue <strong>depuis la console Proxmox</strong> de la VM (canal de confiance) :</p>
+<pre><code class="language-bash"># SUR LA VM (console Proxmox)
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+</code></pre>
+<p>Si elle correspond à celle annoncée dans l'avertissement, alors seulement :</p>
+<pre><code class="language-bash"># SUR adm-01
+ssh-keygen -R 10.0.20.1
+ssh mysql01      # accepter la nouvelle empreinte après comparaison
+</code></pre>
+<p>Détail : <a href="/procedure?id=depannage">INC-07</a></p>
+<h3 id="bastion">Bastion</h3>
+<p>Le poste d'administration externe passe par <strong>adm-01</strong> (<code>ProxyJump</code>) : seul adm-01 doit être joignable depuis l'extérieur. Voir <code>configs/ssh/windows-ssh-config.example</code> (dépôt GitHub). Guacamole offre la même centralisation via un navigateur.</p>
+<hr />
+<h2 id="securite-durcissement">Sécurité — Durcissement</h2>
+<p>Mesures de durcissement par composant. Le statut distingue ce qui est <strong>en place</strong> (intégré à la configuration de référence v1.0.0 et aux fichiers de <code>configs/</code>) de ce qui est <strong>recommandé</strong> (non déployé) ou <strong>futur</strong>. Avant une soutenance, confirmer chaque ligne « En place » sur les VM réelles.</p>
+<h3 id="toutes-les-vm-debian">Toutes les VM Debian</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Commande / fichier</th>
+<th>Statut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mises à jour de sécurité</td>
+<td><code>sudo apt update &amp;&amp; sudo apt upgrade</code></td>
+<td>En place (manuel)</td>
+</tr>
+<tr>
+<td>Mises à jour automatiques de sécurité</td>
+<td><code>sudo apt install unattended-upgrades</code></td>
+<td>Recommandé</td>
+</tr>
+<tr>
+<td>SSH par clé, sans root</td>
+<td>ssh.md</td>
+<td>En place</td>
+</tr>
+<tr>
+<td>Services inutiles désactivés</td>
+<td><code>systemctl list-units --type=service --state=running</code></td>
+<td>À vérifier par VM</td>
+</tr>
+<tr>
+<td>Horloge synchronisée</td>
+<td><code>timedatectl</code> (systemd-timesyncd)</td>
+<td>En place</td>
+</tr>
+<tr>
+<td>Journaux persistants</td>
+<td><code>journalctl --disk-usage</code></td>
+<td>Par défaut Debian 12</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="nftables-sur-les-nuds-galera">nftables sur les nœuds Galera</h3>
+<p>Exemple de pare-feu local (statut : <strong>recommandé</strong>, à tester avant déploiement). Il restreint les ports Galera aux deux autres nœuds, et 3306 à HAProxy.</p>
+<p><strong>SUR bdd-01</strong> — <code>/etc/nftables.conf</code> (adapter <code>self</code> pour bdd-02 et bdd-03)</p>
+<pre><code class="language-text">#!/usr/sbin/nft -f
+flush ruleset
+
+table inet filter {
+    set galera_peers { type ipv4_addr; elements = { 10.0.20.1, 10.0.20.2, 10.0.20.3 } }
+
+    chain input {
+        type filter hook input priority 0; policy drop;
+        iif lo accept
+        ct state established,related accept
+        ip protocol icmp accept
+        ip saddr 10.0.30.0/24 tcp dport 22 accept                     # SSH depuis vADMIN
+        ip saddr 10.0.10.2 tcp dport 3306 accept                      # SQL depuis HAProxy
+        ip saddr @galera_peers tcp dport { 3306, 4444, 4567, 4568 } accept
+        ip saddr @galera_peers udp dport 4567 accept
+    }
+    chain forward { type filter hook forward priority 0; policy drop; }
+    chain output  { type filter hook output priority 0; policy accept; }
+}
+</code></pre>
+<pre><code class="language-bash">sudo nft -c -f /etc/nftables.conf        # vérification de syntaxe
+sudo systemctl enable --now nftables
+</code></pre>
+<blockquote>
+<p>Appliquer <strong>d'abord sur un seul nœud</strong>, vérifier <code>check-galera.sh</code> et l'accès SSH, puis généraliser. Une erreur bloque SSH : garder la console Proxmox à portée.</p>
+</blockquote>
+<h3 id="haproxy">HAProxy</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Statut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Page de stats protégée par mot de passe <strong>et</strong> ACL vADMIN</td>
+<td>En place</td>
+</tr>
+<tr>
+<td><code>stats hide-version</code></td>
+<td>En place</td>
+</tr>
+<tr>
+<td><code>chroot /var/lib/haproxy</code>, compte <code>haproxy</code> non privilégié</td>
+<td>En place (défaut Debian)</td>
+</tr>
+<tr>
+<td>En-tête <code>X-Served-By</code></td>
+<td>En place pour la démonstration — <strong>à retirer en production</strong> (révèle l'architecture interne)</td>
+</tr>
+<tr>
+<td>TLS (HTTPS)</td>
+<td>Futur</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="apache-php">Apache / PHP</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Statut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ServerTokens Prod</code>, <code>ServerSignature Off</code> (<code>/etc/apache2/conf-available/security.conf</code>)</td>
+<td>Recommandé</td>
+</tr>
+<tr>
+<td>Accès direct refusé à <code>wp-config.php</code>, <code>readme.html</code></td>
+<td>En place (vhost)</td>
+</tr>
+<tr>
+<td><code>DISALLOW_FILE_EDIT</code> dans WordPress</td>
+<td>En place</td>
+</tr>
+<tr>
+<td><code>expose_php = Off</code> dans <code>php.ini</code></td>
+<td>Recommandé</td>
+</tr>
+<tr>
+<td>GLPI : <code>DocumentRoot</code> sur <code>public/</code>, <code>install.php</code> supprimé</td>
+<td>En place</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="mariadb">MariaDB</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Statut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bind-address</code> sur l'IP du VLAN vBDD (pas <code>0.0.0.0</code>)</td>
+<td>En place</td>
+</tr>
+<tr>
+<td><code>mariadb-secure-installation</code></td>
+<td>En place</td>
+</tr>
+<tr>
+<td>root uniquement via unix_socket</td>
+<td>En place (défaut Debian)</td>
+</tr>
+<tr>
+<td>Chiffrement TLS de la réplication Galera</td>
+<td>Futur</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="pfsense">pfSense</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Mesure</th>
+<th>Statut</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mot de passe admin changé</td>
+<td>En place</td>
+</tr>
+<tr>
+<td>Interface web accessible depuis vADMIN uniquement</td>
+<td>En place</td>
+</tr>
+<tr>
+<td>Deny-by-default sur les interfaces internes</td>
+<td>En place</td>
+</tr>
+<tr>
+<td>Sauvegarde chiffrée de <code>config.xml</code></td>
+<td>Recommandé</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="securite-moindre-privilege">Sécurité — Moindre privilège</h2>
+<p>Chaque compte ne dispose que des droits strictement nécessaires à sa fonction.</p>
+<h3 id="comptes-sql">Comptes SQL</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Compte</th>
+<th>Hôte</th>
+<th>Privilèges</th>
+<th>Justification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>root</code></td>
+<td><code>localhost</code> (unix_socket)</td>
+<td>Tous</td>
+<td>Administration locale via <code>sudo mariadb</code> uniquement ; pas d'accès réseau</td>
+</tr>
+<tr>
+<td><code>wordpress</code></td>
+<td><code>10.0.10.2</code></td>
+<td><code>ALL ON wordpress.*</code></td>
+<td>WordPress crée/modifie ses tables lors des mises à jour</td>
+</tr>
+<tr>
+<td><code>glpi</code></td>
+<td><code>10.0.10.2</code></td>
+<td><code>ALL ON glpi.*</code> + <code>SELECT ON mysql.time_zone_name</code></td>
+<td>Idem pour GLPI + fuseaux horaires</td>
+</tr>
+<tr>
+<td><code>haproxy_check</code></td>
+<td><code>10.0.10.2</code></td>
+<td>Aucun (<code>USAGE</code>)</td>
+<td>Health-check : ouverture de session seulement</td>
+</tr>
+</tbody>
+</table></div>
+<p>Ce qui est <strong>évité</strong> :</p>
+<ul>
+<li><code>GRANT ALL ON *.*</code> à un compte applicatif ;</li>
+<li>l'hôte <code>'%'</code> (n'importe quelle origine) ;</li>
+<li>le compte <code>root</code> utilisé par une application.</li>
+</ul>
+<h4 id="controle">Contrôle</h4>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-sql">SELECT user, host FROM mysql.user ORDER BY user;
+SHOW GRANTS FOR 'wordpress'@'10.0.10.2';
+-- Aucun compte applicatif avec l'hôte '%' :
+SELECT user, host FROM mysql.user WHERE host = '%';
+</code></pre>
+<h4 id="le-cas-haproxy-check">Le cas <code>haproxy_check</code></h4>
+<p>Ce compte sans mot de passe est accessible à quiconque peut joindre <code>10.0.10.2:3306</code> (toutes les connexions via HAProxy apparaissent venir de 10.0.10.2). Il ne permet que <code>SELECT 1</code>, <code>SHOW STATUS</code> et la lecture de quelques variables. Mesures de limitation :</p>
+<ul>
+<li>pfSense : seuls vWEB et vADMIN atteignent <code>10.0.10.2:3306</code> ;</li>
+<li>limite de connexions :</li>
+</ul>
+<p><code>sql
+  ALTER USER 'haproxy_check'@'10.0.10.2' WITH MAX_USER_CONNECTIONS 10;</code></p>
+<ul>
+<li>amélioration future : check <em>wsrep-aware</em> HTTP (port 9200) qui supprime le besoin de ce compte.</li>
+</ul>
+<h3 id="comptes-systeme">Comptes système</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Compte</th>
+<th>Usage</th>
+<th>Shell</th>
+<th>sudo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&lt;ADMIN_USER&gt;</code> (par VM)</td>
+<td>Administration humaine</td>
+<td><code>/bin/bash</code></td>
+<td>Oui</td>
+</tr>
+<tr>
+<td><code>haproxyadmin</code> (haproxy)</td>
+<td>Administration humaine de HAProxy</td>
+<td><code>/bin/bash</code></td>
+<td>Oui</td>
+</tr>
+<tr>
+<td><code>haproxy</code></td>
+<td>Service HAProxy (paquet)</td>
+<td><code>nologin</code></td>
+<td>Non</td>
+</tr>
+<tr>
+<td><code>mysql</code></td>
+<td>Service MariaDB (paquet)</td>
+<td><code>nologin</code></td>
+<td>Non</td>
+</tr>
+<tr>
+<td><code>www-data</code></td>
+<td>Apache / PHP</td>
+<td><code>nologin</code></td>
+<td>Non</td>
+</tr>
+</tbody>
+</table></div>
+<p>Séparer le compte <strong>humain</strong> du compte <strong>de service</strong> évite qu'une faille dans un service donne un shell interactif, et évite le conflit décrit dans <a href="/procedure?id=depannage">INC-08</a>.</p>
+<h3 id="fichiers">Fichiers</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Fichier</th>
+<th>Propriétaire</th>
+<th>Droits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/var/www/wordpress/wp-config.php</code></td>
+<td><code>root:www-data</code></td>
+<td><code>640</code></td>
+</tr>
+<tr>
+<td><code>/var/www/glpi/config/config_db.php</code></td>
+<td><code>www-data:www-data</code></td>
+<td><code>640</code></td>
+</tr>
+<tr>
+<td><code>/etc/haproxy/haproxy.cfg</code></td>
+<td><code>root:root</code></td>
+<td><code>644</code> (contient le mot de passe des stats : <code>640 root:haproxy</code> recommandé)</td>
+</tr>
+<tr>
+<td><code>~/.ssh/id_ed25519</code></td>
+<td>utilisateur</td>
+<td><code>600</code></td>
+</tr>
+<tr>
+<td><code>/var/backups/mariadb/*.sql.gz</code></td>
+<td><code>root</code></td>
+<td><code>600</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="reseau">Réseau</h3>
+<p>Le principe s'applique aussi aux flux : seul <strong>HAProxy</strong> atteint les bases ; seul <strong>vADMIN</strong> atteint SSH ; les postes <strong>vUSER</strong> n'atteignent que les services publiés. Voir Matrice-de-flux.md.</p>
+<hr />
+<h2 id="securite-gestion-des-secrets">Sécurité — Gestion des secrets</h2>
+<h3 id="inventaire-des-secrets-de-linfrastructure">Inventaire des secrets de l'infrastructure</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Secret</th>
+<th>Où il est utilisé</th>
+<th>Où il est stocké</th>
+<th>Dans le dépôt</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mot de passe admin pfSense</td>
+<td>Interface web pfSense</td>
+<td>Gestionnaire de mots de passe</td>
+<td>Jamais</td>
+</tr>
+<tr>
+<td>Mot de passe <code>wordpress</code>@<code>10.0.10.2</code></td>
+<td><code>wp-config.php</code> (web-01, web-02)</td>
+<td>Gestionnaire + fichier <code>640</code> sur les VM</td>
+<td><code>&lt;SECRET&gt;</code></td>
+</tr>
+<tr>
+<td>Clés/sels WordPress</td>
+<td><code>wp-config.php</code></td>
+<td>Fichier sur les VM</td>
+<td><code>&lt;SECRET&gt;</code></td>
+</tr>
+<tr>
+<td>Mot de passe <code>glpi</code>@<code>10.0.10.2</code></td>
+<td><code>config_db.php</code> (glpi)</td>
+<td>Gestionnaire + fichier sur la VM</td>
+<td><code>&lt;PASSWORD&gt;</code></td>
+</tr>
+<tr>
+<td>Mot de passe des stats HAProxy</td>
+<td><code>haproxy.cfg</code></td>
+<td>Gestionnaire + fichier sur la VM</td>
+<td><code>&lt;PASSWORD&gt;</code></td>
+</tr>
+<tr>
+<td>Clé privée SSH d'administration</td>
+<td>adm-01, poste admin</td>
+<td><code>~/.ssh/</code> (<code>600</code>), phrase de passe</td>
+<td>Jamais</td>
+</tr>
+<tr>
+<td>Comptes WordPress / GLPI</td>
+<td>Interfaces web</td>
+<td>Gestionnaire de mots de passe</td>
+<td>Jamais</td>
+</tr>
+<tr>
+<td>Export <code>config.xml</code> pfSense</td>
+<td>Restauration</td>
+<td>Stockage chiffré hors lab</td>
+<td>Jamais</td>
+</tr>
+</tbody>
+</table></div>
+<p>Le compte <code>haproxy_check</code> n'a <strong>pas</strong> de mot de passe par conception (aucun privilège, restreint à <code>10.0.10.2</code>) : ce n'est pas un secret, mais une surface à limiter (voir least-privilege.md).</p>
+<h3 id="regles">Règles</h3>
+<ol>
+<li><strong>Aucun secret dans Git</strong>, même dans un dépôt privé, même « temporairement » : l'historique est conservé.</li>
+<li>Configurations publiées en <strong><code>.example</code></strong> avec placeholders.</li>
+<li>Mots de passe <strong>uniques</strong> par service, générés aléatoirement (≥ 20 caractères).</li>
+<li>Mots de passe <strong>demandés à l'exécution</strong> par les scripts (<code>read -s</code>), jamais en argument (<code>-pMotDePasse</code> est visible dans <code>ps</code> et l'historique).</li>
+<li>Fichiers contenant des secrets sur les VM : propriétaire <code>root</code> ou compte de service, droits <code>600</code>/<code>640</code>.</li>
+</ol>
+<h3 id="garde-fous-du-depot">Garde-fous du dépôt</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Outil</th>
+<th>Rôle</th>
+<th>Coût</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.gitignore</code></td>
+<td>Empêche l'ajout accidentel de clés, <code>.env</code>, sauvegardes, configs réelles</td>
+<td>Aucun</td>
+</tr>
+<tr>
+<td><code>check-repository.sh</code> (dépôt GitHub)</td>
+<td>Recherche fichiers sensibles et motifs de secrets (local + CI)</td>
+<td>Aucun</td>
+</tr>
+<tr>
+<td><strong>GitHub Secret Scanning</strong></td>
+<td>Détecte les formats de tokens connus (GitHub, AWS, Slack…) dans tout l'historique</td>
+<td>Gratuit pour les dépôts publics</td>
+</tr>
+<tr>
+<td><strong>Push Protection</strong></td>
+<td><strong>Bloque</strong> un push contenant un token reconnu</td>
+<td>Gratuit pour les dépôts publics</td>
+</tr>
+<tr>
+<td><strong>Dependabot</strong></td>
+<td>Tient à jour les versions des GitHub Actions (dependabot.yml)</td>
+<td>Aucun</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="activer-secret-scanning-et-push-protection">Activer Secret Scanning et Push Protection</h4>
+<p><em>Settings → Code security → Secret Protection</em> (intitulé variable selon l'interface GitHub) → activer <strong>Secret scanning</strong> et <strong>Push protection</strong>.</p>
+<h4 id="et-codeql">Et CodeQL ?</h4>
+<p>CodeQL analyse du code applicatif (JavaScript, Python…) à la recherche de vulnérabilités. Ici, seul le générateur contient du JavaScript, exécuté localement sans serveur ni entrée distante. CodeQL n'apporterait qu'un gain marginal pour une complexité de CI supplémentaire : <strong>non retenu</strong> en v1.0.0. Il peut être activé en un clic (<em>Code scanning → Default setup</em>) si le générateur évolue.</p>
+<h4 id="limites">Limites</h4>
+<p>Ces outils reconnaissent des <strong>formats</strong> (préfixes de tokens, en-têtes de clés). Un mot de passe comme <code>Lab2026!</code> dans un fichier de configuration ne sera détecté ni par GitHub ni par la plupart des scanners. La vraie protection reste la <strong>discipline</strong> : <code>.example</code>, placeholders, relecture du <code>git diff</code> avant commit.</p>
+<h3 id="avant-chaque-commit">Avant chaque commit</h3>
+<pre><code class="language-bash"># SUR LE POSTE DE DÉVELOPPEMENT
+git diff --cached
+make check
+</code></pre>
+<h3 id="en-cas-de-fuite">En cas de fuite</h3>
+<p>Procédure : <code>SECURITY.md</code> (dépôt GitHub) — <strong>changer le secret d'abord</strong>, nettoyer l'historique ensuite.</p>

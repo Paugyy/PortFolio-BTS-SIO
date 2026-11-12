@@ -1,0 +1,225 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 06/11/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+<p>Mode opératoire rédigé le 15/10/2026 (version express), <strong>mis à jour le 06/11/2026</strong> : la même VM héberge aussi le collecteur <strong>Rsyslog</strong> (514) et <strong>LogAnalyzer</strong> (second site Apache sur 8085) → <a href="/procedure?id=mo-09-rsyslog-loganalyzer">MO-9</a>. Le site Zabbix (port 80, <code>/zabbix/</code>) n'est pas modifié. VM concernée : fiche zabbix.
+Aucun secret : les mots de passe sont remplacés par des marque-places <code>&lt;MOT_DE_PASSE_…&gt;</code>.</p>
+</blockquote>
+<p>Installer Zabbix 7.0 LTS sur ZABBIX-01, stocker sa base sur le cluster Galera via HAProxy, puis superviser les VM par agent : 5 étapes, chacune avec sa vérification.</p>
+<h2 id="machines-et-flux">Machines et flux</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Machine</th>
+<th>IP</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sio2527-ZABBIX-ypaugy</td>
+<td>10.0.30.3</td>
+<td>Serveur Zabbix (Debian 12, VLAN 303)</td>
+</tr>
+<tr>
+<td>sio2527-HAPROXY-ypaugy</td>
+<td>10.0.10.2</td>
+<td>Accès SQL au cluster, port 3306</td>
+</tr>
+<tr>
+<td>sio2527-MYSQL-01-ypaugy</td>
+<td>10.0.20.1</td>
+<td>Nœud Galera 1, sert à créer la base</td>
+</tr>
+<tr>
+<td>sio2527-MYSQL-02-ypaugy</td>
+<td>10.0.20.2</td>
+<td>Nœud Galera 2</td>
+</tr>
+<tr>
+<td>sio2527-MYSQL-03-ypaugy</td>
+<td>10.0.20.3</td>
+<td>Nœud Galera 3</td>
+</tr>
+<tr>
+<td>sio2527-fw-01-ypaugy</td>
+<td>WAN 10.4.0.198</td>
+<td>pfSense, publie le Web Zabbix sur le port 2231, le SSH sur 2232 (et LogAnalyzer sur 2233 depuis le 06/11, <a href="/procedure?id=mo-10-pfsense-journalisation">MO-10</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Flux :</strong> ZABBIX-01 → pfSense → HAProxy:3306 → Galera pour la base ; ZABBIX-01 → pfSense → agents:10050 pour les métriques.</p>
+<h2 id="1-pfsense-autoriser-zabbix">1. pfSense : autoriser Zabbix</h2>
+<p><strong>SUR sio2527-fw-01-ypaugy — interface Web</strong> → <em>Firewall / Rules / vADMIN</em>, règles placées <strong>au-dessus</strong> de DEFAULT-DENY.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Source</th>
+<th>Destination</th>
+<th>Port</th>
+<th>Pourquoi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>PASS</td>
+<td>10.0.30.3</td>
+<td>10.0.10.0/24</td>
+<td>TCP 10050</td>
+<td>Agents du VLAN Web</td>
+</tr>
+<tr>
+<td>2</td>
+<td>PASS</td>
+<td>10.0.30.3</td>
+<td>10.0.20.0/24</td>
+<td>TCP 10050</td>
+<td>Agents des nœuds Galera</td>
+</tr>
+<tr>
+<td>3</td>
+<td>PASS</td>
+<td>10.0.30.3</td>
+<td>10.0.10.2</td>
+<td>TCP 3306</td>
+<td>Base Zabbix via HAProxy</td>
+</tr>
+</tbody>
+</table></div>
+<p>Pour l'import du schéma (étape 3) seulement : PASS 10.0.30.3 → 10.0.20.1 TCP 3306, à désactiver ensuite.</p>
+<blockquote>
+<p><strong>ATTENTION</strong> — Ne jamais publier 10050, 10051, 3306, 514 (Syslog) ni UDP 161 sur le WAN.</p>
+</blockquote>
+<h2 id="2-base-de-donnees">2. Base de données</h2>
+<p><strong>SUR sio2527-MYSQL-01-ypaugy — 10.0.20.1</strong> (Galera réplique sur les 3 nœuds)</p>
+<pre><code class="language-sql">CREATE DATABASE zabbix CHARACTER SET utf8mb4 COLLATE utf8mb4_bin;
+CREATE USER 'zabbix'@'10.0.30.3' IDENTIFIED BY '&lt;MOT_DE_PASSE_ZABBIX_DB&gt;';
+CREATE USER 'zabbix'@'10.0.10.2' IDENTIFIED BY '&lt;MOT_DE_PASSE_ZABBIX_DB&gt;';
+GRANT ALL PRIVILEGES ON zabbix.* TO 'zabbix'@'10.0.30.3';
+GRANT ALL PRIVILEGES ON zabbix.* TO 'zabbix'@'10.0.10.2';
+SET GLOBAL log_bin_trust_function_creators = 1;
+</code></pre>
+<p>Deux comptes : <code>10.0.30.3</code> pour l'import en direct, <code>10.0.10.2</code> parce que MariaDB voit l'IP de HAProxy quand Zabbix passe par lui.</p>
+<h2 id="3-installer-zabbix">3. Installer Zabbix</h2>
+<p><strong>SUR sio2527-ZABBIX-ypaugy — 10.0.30.3</strong> — dépôt, paquets, import du schéma (une seule fois, en entier)</p>
+<pre><code class="language-bash">wget https://repo.zabbix.com/zabbix/7.0/debian/pool/main/z/zabbix-release/zabbix-release_latest_7.0+debian12_all.deb
+sudo dpkg -i zabbix-release_latest_7.0+debian12_all.deb
+sudo apt update
+sudo apt install zabbix-server-mysql zabbix-frontend-php zabbix-apache-conf zabbix-sql-scripts zabbix-agent2 mariadb-client
+zcat /usr/share/zabbix-sql-scripts/mysql/server.sql.gz | mysql --default-character-set=utf8mb4 -h 10.0.20.1 -u zabbix -p zabbix
+</code></pre>
+<p><strong>SUR sio2527-ZABBIX-ypaugy — 10.0.30.3</strong> — fichier <code>/etc/zabbix/zabbix_server.conf</code></p>
+<pre><code class="language-ini">DBHost=10.0.10.2
+DBName=zabbix
+DBUser=zabbix
+DBPassword=&lt;MOT_DE_PASSE_ZABBIX_DB&gt;
+</code></pre>
+<p><strong>SUR sio2527-ZABBIX-ypaugy — 10.0.30.3</strong> — locales, fuseau, services</p>
+<pre><code class="language-bash">sudo apt install locales
+sudo sed -i -e 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' -e 's/^# *fr_FR.UTF-8 UTF-8/fr_FR.UTF-8 UTF-8/' /etc/locale.gen
+sudo locale-gen
+sudo timedatectl set-timezone Europe/Paris
+sudo systemctl restart zabbix-server zabbix-agent2 apache2
+sudo systemctl enable zabbix-server zabbix-agent2 apache2
+</code></pre>
+<p><strong>Assistant Web :</strong> <code>http://10.4.0.198:2231/zabbix</code> → base MySQL, hôte <code>10.0.10.2</code>, port <code>3306</code>, base et utilisateur <code>zabbix</code>, <strong>TLS décoché</strong>, fuseau Europe/Paris. Changer ensuite le mot de passe du compte <code>Admin</code> (<code>&lt;MOT_DE_PASSE_ADMIN&gt;</code>).</p>
+<blockquote>
+<p><strong>RÉSULTAT ATTENDU</strong> — 203 tables dans la base <code>zabbix</code>, tableau de bord Zabbix accessible. Désactiver la règle temporaire vers 10.0.20.1:3306.</p>
+</blockquote>
+<h2 id="4-installer-les-agents">4. Installer les agents</h2>
+<p><strong>SUR chaque VM Linux — exemple : sio2527-MYSQL-01-ypaugy — 10.0.20.1</strong> (dépôt Zabbix ajouté comme à l'étape 3)</p>
+<pre><code class="language-bash">sudo apt install zabbix-agent2
+</code></pre>
+<p>Fichier <code>/etc/zabbix/zabbix_agent2.conf</code> :</p>
+<pre><code class="language-ini">Server=10.0.30.3
+ServerActive=10.0.30.3
+Hostname=sio2527-MYSQL-01-ypaugy
+</code></pre>
+<pre><code class="language-bash">sudo systemctl restart zabbix-agent2
+sudo systemctl enable zabbix-agent2
+</code></pre>
+<p><code>Hostname</code> doit être exactement le nom de la VM, celui qui sera saisi dans Zabbix.</p>
+<h2 id="5-ajouter-les-hotes-et-verifier">5. Ajouter les hôtes et vérifier</h2>
+<p><strong>SUR sio2527-ZABBIX-ypaugy — 10.0.30.3 — interface Web</strong> → <em>Data collection / Hosts / Create host</em> : <em>Host name</em> = hostname exact de la VM, interface <em>Agent</em> <code>IP:10050</code>, template <em>Linux by Zabbix agent</em>.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Machine</th>
+<th>Commande</th>
+<th>Attendu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Agent joignable</td>
+<td>sio2527-ZABBIX-ypaugy — 10.0.30.3</td>
+<td><code>zabbix_get -s 10.0.20.1 -p 10050 -k agent.ping</code> (paquet <code>zabbix-get</code>)</td>
+<td><code>1</code></td>
+</tr>
+<tr>
+<td>Base via HAProxy</td>
+<td>sio2527-ZABBIX-ypaugy — 10.0.30.3</td>
+<td><code>mysql -h 10.0.10.2 -u zabbix -p -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='zabbix';"</code></td>
+<td><code>203</code></td>
+</tr>
+<tr>
+<td>Cluster sain</td>
+<td>sio2527-MYSQL-01-ypaugy — 10.0.20.1</td>
+<td><code>sudo mysql -e "SHOW STATUS LIKE 'wsrep_cluster_size';"</code></td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td>Hôte supervisé</td>
+<td>Interface Web Zabbix</td>
+<td><em>Data collection / Hosts</em></td>
+<td>Icône <strong>ZBX</strong> verte</td>
+</tr>
+<tr>
+<td>Site Zabbix intact après ajout de LogAnalyzer</td>
+<td>sio2527-ZABBIX-ypaugy — 10.0.30.3</td>
+<td><code>curl -I http://127.0.0.1/zabbix/</code></td>
+<td><code>200</code> (relevé le 06/11)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="pieges-deja-rencontres">Pièges déjà rencontrés</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Symptôme</th>
+<th>Solution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ERROR 1050 : Table 'role' already exists</code></td>
+<td>Import partiel : <code>DROP DATABASE zabbix;</code> puis <code>CREATE DATABASE</code> et réimport complet</td>
+</tr>
+<tr>
+<td><code>ERROR 1419 : SUPER privilege</code></td>
+<td><code>SET GLOBAL log_bin_trust_function_creators = 1;</code> plutôt que donner SUPER au compte</td>
+</tr>
+<tr>
+<td>« MySQL server has gone away » dans l'assistant</td>
+<td>Décocher le chiffrement TLS de la base</td>
+</tr>
+<tr>
+<td>Locale <code>en_US</code> absente</td>
+<td><code>locale-gen</code> puis redémarrer Apache</td>
+</tr>
+<tr>
+<td>Fichier SQL introuvable</td>
+<td>Bon chemin : <code>/usr/share/zabbix-sql-scripts/mysql/server.sql.gz</code></td>
+</tr>
+<tr>
+<td>Icône ZBX rouge, « timed out »</td>
+<td>Règle pfSense manquante ou placée sous DEFAULT-DENY</td>
+</tr>
+<tr>
+<td>Doute après l'ajout d'un second site Apache (8085)</td>
+<td><code>sudo apache2ctl -S</code> liste les deux sites ; <code>reload</code> plutôt que <code>restart</code> ; <code>/zabbix/</code> doit répondre <code>200</code></td>
+</tr>
+</tbody>
+</table></div>

@@ -1,0 +1,609 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 06/11/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+<p>Mode opératoire rédigé le 06/11/2026, d'après les commandes et les captures de la mise en service du même jour. VM concernée : fiche zabbix. Pare-feu : <a href="/procedure?id=mo-10-pfsense-journalisation">MO-10</a>. Incidents et recette : registre du 06/11.
+Aucun secret : mots de passe et comptes remplacés par <code>&lt;MOT_DE_PASSE_…&gt;</code>, <code>&lt;COMPTE_…&gt;</code>.</p>
+</blockquote>
+<p><strong>Légende :</strong> ✅ <strong>fait et testé</strong> (sortie de commande ou capture du 06/11) · 🟨 <strong>proposé, non testé</strong> (ou à confirmer sur la machine) · ⬜ <strong>à faire</strong></p>
+<p><strong>Pourquoi :</strong> chaque serveur garde ses journaux chez lui. Quand une panne touche plusieurs machines, il faut ouvrir autant de sessions pour reconstituer ce qui s'est passé, et un serveur compromis peut effacer ses propres traces. On envoie donc une <strong>copie</strong> de chaque journal vers <strong>un seul serveur</strong> (Rsyslog), lisible dans un navigateur (LogAnalyzer). C'est la brique « Preuve » (traçabilité) du DICP de la réalisation 1.</p>
+<p><strong>Choix :</strong> aucune VM ni adresse en plus. Les trois services cohabitent sur <code>sio2527-ZABBIX-ypaugy</code> (<code>10.0.30.3</code>, VLAN 303), chacun sur son port : <strong>Zabbix :80</strong>, <strong>LogAnalyzer :8085</strong>, <strong>Syslog :514</strong>.</p>
+<h2 id="etat-au-06112026-fin-de-journee-de-mise-en-service">État au 06/11/2026 (fin de journée de mise en service)</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Brique</th>
+<th>Ce qui est en place</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Récepteur Rsyslog TCP/UDP 514</td>
+<td>Écoute IPv4 et IPv6 (<code>ss</code>), messages de test reçus à 07:35</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Fichier central et droits</td>
+<td><code>/var/log/remote-syslog/central.log</code>, <code>root:www-data</code>, <code>0750</code> / <code>0640</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Site Apache 8085 + authentification Basic</td>
+<td><code>401</code> sans compte, <code>200</code> avec ; <code>/zabbix/</code> toujours <code>200</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Liste d'adresses Apache</td>
+<td><code>403</code> depuis le poste <code>10.2.0.122</code> corrigé en autorisant <strong>son réseau</strong> ; plages exactes retenues à relire</td>
+<td>✅ / 🟨 plages à confirmer</td>
+</tr>
+<tr>
+<td>Publication <code>WAN:2233</code> → <code>:8085</code></td>
+<td>Interface ouverte dans Chrome depuis le poste</td>
+<td>✅ (règles actives à relire : <a href="/procedure?id=mo-10-pfsense-journalisation">MO-10</a>)</td>
+</tr>
+<tr>
+<td>LogAnalyzer <strong>5.0.2</strong></td>
+<td>Assistant terminé : source <code>SYSLOG-CENTRAL</code>, type <em>Diskfile</em>, vue <em>Syslog Fields</em>, format <em>Syslog / RSyslog</em> ; base d'utilisateurs LogAnalyzer non activée</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Verrouillage <code>config.php</code>, neutralisation de <code>install.php</code></td>
+<td>Non fait</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>Envoi <strong>automatique</strong> depuis les 8 VM Linux</td>
+<td><code>SYSLOG-AUTO</code> visible pour les 8 machines, plus de vrais événements <code>sudo</code> et <code>mariadbd</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Journaux de pfSense</td>
+<td>Non configurés</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>Journaux Windows (adm-01, cli-01)</td>
+<td>Méthode à choisir</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>Fichiers applicatifs (Apache access/error, HAProxy, GLPI…)</td>
+<td>Non confirmés : seuls les journaux système passent</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>Rotation, résilience après redémarrage ou coupure, HTTPS</td>
+<td>Non faits</td>
+<td>⬜</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="machines-et-flux">Machines et flux</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Machine</th>
+<th>IP</th>
+<th>Rôle</th>
+<th>Envoi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sio2527-ZABBIX-ypaugy</td>
+<td>10.0.30.3</td>
+<td><strong>Collecteur</strong> Rsyslog · LogAnalyzer 8085 · Zabbix 80</td>
+<td>— (ne s'envoie rien à lui-même)</td>
+</tr>
+<tr>
+<td>sio2527-WEB-01-ypaugy · HAPROXY · GLPI-01 · WEB-02</td>
+<td>10.0.10.1 · .2 · .3 · .4</td>
+<td>Émetteurs vWEB</td>
+<td>TCP 514, à travers pfSense (règle vWEB) ✅</td>
+</tr>
+<tr>
+<td>sio2527-MYSQL-01 / 02 / 03-ypaugy</td>
+<td>10.0.20.1 · .2 · .3</td>
+<td>Émetteurs vBDD</td>
+<td>TCP 514, à travers pfSense (règle vBDD) ✅</td>
+</tr>
+<tr>
+<td>sio2527-guacamole-01-ypaugy</td>
+<td>10.0.30.2</td>
+<td>Émetteur vADMIN</td>
+<td>TCP 514, <strong>même VLAN</strong> : pas de règle ✅</td>
+</tr>
+<tr>
+<td>sio2527-fw-01-ypaugy</td>
+<td>10.0.30.254 côté vADMIN</td>
+<td>Émetteur prévu</td>
+<td>UDP 514 ⬜</td>
+</tr>
+<tr>
+<td>adm-01, cli-01 (Windows)</td>
+<td>10.0.30.1, 10.0.40.1</td>
+<td>Émetteurs prévus</td>
+<td>Méthode à choisir ⬜</td>
+</tr>
+<tr>
+<td>Poste d'administration</td>
+<td>10.2.0.122 le 06/11</td>
+<td>Lecteur LogAnalyzer</td>
+<td><code>WAN:2233</code> ✅</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-text"> vWEB .1 .2 .3 .4 ─┐ TCP 514 (règle vWEB)
+ vBDD .1 .2 .3 ────┼──────────► 10.0.30.3 Rsyslog ──► /var/log/remote-syslog/central.log
+ guacamol .30.2 ───┘ (même VLAN)                              │ lecture www-data
+ pfSense (à faire, UDP 514)                                   ▼
+ Poste admin ──► 10.4.0.198:2233 ──NAT──► 10.0.30.3:8085 LogAnalyzer 5.0.2 (compte + réseau autorisé)
+</code></pre>
+<blockquote>
+<p><strong>ATTENTION</strong> — Ne <strong>jamais</strong> publier 514 (TCP ou UDP), 10050, 10051, 3306 ni UDP 161 sur le WAN. Syslog circule en clair : il reste à l'intérieur du labo.</p>
+</blockquote>
+<hr />
+<h2 id="1-recepteur-rsyslog">1. Récepteur Rsyslog — ✅</h2>
+<p><strong>SUR sio2527-ZABBIX-ypaugy — 10.0.30.3</strong> — fichier <code>/etc/rsyslog.d/10-central-receiver.conf</code> :</p>
+<pre><code class="language-rsyslog">module(load=&quot;imudp&quot;)
+module(load=&quot;imtcp&quot;)
+
+ruleset(name=&quot;remoteLogs&quot;) {
+    action(
+        type=&quot;omfile&quot;
+        file=&quot;/var/log/remote-syslog/central.log&quot;
+        template=&quot;RSYSLOG_TraditionalFileFormat&quot;
+    )
+}
+
+input(type=&quot;imudp&quot; port=&quot;514&quot; ruleset=&quot;remoteLogs&quot;)
+input(type=&quot;imtcp&quot; port=&quot;514&quot; ruleset=&quot;remoteLogs&quot;)
+</code></pre>
+<p>Le <code>ruleset</code> sépare les messages reçus du réseau des journaux propres à la VM : ils vont <strong>seulement</strong> dans <code>central.log</code>.</p>
+<pre><code class="language-bash">sudo install -d -o root -g www-data -m 0750 /var/log/remote-syslog
+sudo touch /var/log/remote-syslog/central.log
+sudo chown root:www-data /var/log/remote-syslog/central.log &amp;&amp; sudo chmod 0640 /var/log/remote-syslog/central.log
+sudo rsyslogd -N1 &amp;&amp; sudo systemctl restart rsyslog
+</code></pre>
+<p>Pas de compte <code>syslog</code> sur cette Debian (INC-01) : Rsyslog tourne sous <code>root:root</code> (<code>ps -o user,group,cmd -C rsyslogd</code>). Le groupe <code>www-data</code> permet à Apache de <strong>lire</strong>, pas d'écrire.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Vérification (sur 10.0.30.3)</th>
+<th>Commande</th>
+<th>Relevé du 06/11</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Écoute</td>
+<td><code>sudo ss -lntup \| grep ':514 '</code></td>
+<td><code>0.0.0.0:514</code> et <code>[::]:514</code>, TCP et UDP ✅</td>
+</tr>
+<tr>
+<td>Réception UDP puis TCP</td>
+<td><code>logger</code> en local vers le port 514, puis <code>sudo tail central.log</code></td>
+<td><code>Nov  6 07:35:37 … TEST UDP - reception fonctionnelle</code> et <code>07:35:42 … TEST TCP - reception fonctionnelle</code> ✅</td>
+</tr>
+<tr>
+<td>Lecture par Apache</td>
+<td>affichage des deux messages dans LogAnalyzer</td>
+<td>✅ (capture 20)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="2-site-apache-loganalyzer-sur-8085">2. Site Apache LogAnalyzer sur 8085 — ✅</h2>
+<p><strong>SUR sio2527-ZABBIX-ypaugy — 10.0.30.3</strong> — Apache sert déjà Zabbix sur le port 80. On ajoute un <strong>second port</strong> (<code>Listen 8085</code> dans <code>/etc/apache2/ports.conf</code>) et un site dédié, <code>/etc/apache2/sites-available/loganalyzer-8085.conf</code>, qui pointe sur <code>/var/www/loganalyzer</code>. Le site Zabbix n'est pas touché.</p>
+<pre><code class="language-bash">sudo htpasswd -c /etc/apache2/.htpasswd-loganalyzer &lt;COMPTE_LOGANALYZER&gt;   # mot de passe demandé à l'écran, écrit nulle part
+</code></pre>
+<p>On exige <strong>les deux</strong> : un compte valide <strong>et</strong> une adresse source connue. Le NAT de pfSense conserve l'adresse du poste : sans son réseau dans la liste, Apache répond <code>403</code> même avec le bon compte (INC-05 : <code>AH01630: client denied by server configuration</code> pour <code>10.2.0.122</code>).</p>
+<pre><code class="language-apache">&lt;Directory /var/www/loganalyzer&gt;
+    Options -Indexes +FollowSymLinks
+    AllowOverride None
+    DirectoryIndex index.php
+    AuthType Basic
+    AuthName &quot;LogAnalyzer - Administration&quot;
+    AuthUserFile /etc/apache2/.htpasswd-loganalyzer
+    &lt;RequireAll&gt;
+        Require valid-user
+        &lt;RequireAny&gt;
+            Require local
+            Require ip 10.0.30.0/24
+            Require ip &lt;RÉSEAU_DU_POSTE_ADMIN&gt;      # 10.2.0.0/24 couvre le poste 10.2.0.122
+        &lt;/RequireAny&gt;
+    &lt;/RequireAll&gt;
+&lt;/Directory&gt;
+</code></pre>
+<blockquote>
+<p>🟨 <strong>À confirmer</strong> : les plages réellement retenues dans le fichier. Les relire avec <code>grep -n "Require" /etc/apache2/sites-available/loganalyzer-8085.conf</code> et reporter le résultat ici. Ne <strong>jamais</strong> remplacer ce bloc par <code>Require all granted</code>.</p>
+</blockquote>
+<pre><code class="language-bash">sudo apache2ctl configtest        # &quot;Syntax OK&quot; ; l'avertissement AH00558 (nom de serveur) n'est pas bloquant
+sudo systemctl reload apache2     # reload, pas restart : Zabbix n'est pas coupé
+sudo ss -lntp | grep -E ':(80|8085) '
+curl -I http://127.0.0.1:8085/                              # 401 Unauthorized ✅
+curl -I -u &lt;COMPTE_LOGANALYZER&gt; http://127.0.0.1:8085/      # 200 OK (mot de passe saisi au clavier) ✅
+curl -I http://127.0.0.1/zabbix/                            # 200 OK : Zabbix inchangé ✅
+</code></pre>
+<h2 id="3-assistant-loganalyzer-502-fait-verrouillage">3. Assistant LogAnalyzer 5.0.2 — ✅ fait · ⬜ verrouillage</h2>
+<p>Avant l'assistant, l'interface affichait <code>Critical Error occured — main configuration file is missing!</code> (INC-06) : c'est normal tant que <code>install.php</code> n'a pas été joué.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Valeur retenue</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Ouvrir <code>http://10.4.0.198:2233/install.php</code> depuis le poste</td>
+<td><code>401</code>, puis assistant</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Base d'utilisateurs propre à LogAnalyzer</td>
+<td><strong>non activée</strong> (l'accès est protégé par Apache)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Source des journaux (étape 7)</td>
+<td>nom <code>SYSLOG-CENTRAL</code>, type <strong>Diskfile</strong>, format <em>Syslog / RSyslog</em>, fichier <code>/var/log/remote-syslog/central.log</code>, vue <em>Syslog Fields</em></td>
+<td>✅ (captures 18, 19)</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Afficher les messages</td>
+<td>les deux tests TCP et UDP de 07:35 visibles</td>
+<td>✅ (capture 20)</td>
+</tr>
+<tr>
+<td>5</td>
+<td><strong>Verrouiller</strong></td>
+<td>retirer le droit d'écriture temporaire sur <code>config.php</code>, rendre <code>install.php</code> inaccessible, vérifier que les messages s'affichent toujours</td>
+<td>⬜</td>
+</tr>
+</tbody>
+</table></div>
+<p>Proposition pour l'étape 5 (🟨 non testée) — <strong>SUR 10.0.30.3</strong> :</p>
+<pre><code class="language-bash">sudo chown root:www-data /var/www/loganalyzer/config.php &amp;&amp; sudo chmod 0640 /var/www/loganalyzer/config.php
+sudo mv /var/www/loganalyzer/install.php /root/loganalyzer-install.php.bak
+curl -I -u &lt;COMPTE_LOGANALYZER&gt; http://127.0.0.1:8085/install.php    # attendu : 404
+curl -I -u &lt;COMPTE_LOGANALYZER&gt; http://127.0.0.1:8085/               # attendu : 200, messages toujours visibles
+</code></pre>
+<h2 id="4-envoi-depuis-les-8-vm-linux">4. Envoi depuis les 8 VM Linux — ✅</h2>
+<p><strong>SUR chacune des 8 VM émettrices</strong> (WEB-01 <code>10.0.10.1</code>, WEB-02 <code>10.0.10.4</code>, HAPROXY <code>10.0.10.2</code>, GLPI-01 <code>10.0.10.3</code>, MYSQL-01/02/03 <code>10.0.20.1</code> à <code>.3</code>, guacamole-01 <code>10.0.30.2</code>) — <strong>jamais sur zabbix</strong>, qui se renverrait ses propres messages.</p>
+<p>Rsyslog n'était <strong>pas installé</strong> sur ces Debian : le fichier de transfert seul ne faisait rien (INC-08).</p>
+<pre><code class="language-bash">sudo apt update
+sudo apt install -y rsyslog
+sudo systemctl enable --now rsyslog
+</code></pre>
+<p>Fichier <code>/etc/rsyslog.d/90-centralisation.conf</code> :</p>
+<pre><code class="language-rsyslog">*.* action(
+    type=&quot;omfwd&quot;
+    target=&quot;10.0.30.3&quot;
+    port=&quot;514&quot;
+    protocol=&quot;tcp&quot;
+    queue.type=&quot;LinkedList&quot;
+    queue.filename=&quot;syslog-forward&quot;
+    queue.maxDiskSpace=&quot;512m&quot;
+    queue.saveOnShutdown=&quot;on&quot;
+    action.resumeRetryCount=&quot;-1&quot;
+)
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Paramètre</th>
+<th>Pourquoi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>omfwd</code>, <code>protocol="tcp"</code></td>
+<td>Copie automatique de tout ce que Rsyslog traite, en TCP : une perte de connexion se voit, au lieu de disparaître en silence comme en UDP</td>
+</tr>
+<tr>
+<td><code>queue.*</code>, <code>resumeRetryCount="-1"</code></td>
+<td>File d'attente sur disque (512 Mo au plus) et nouvelles tentatives sans limite si le collecteur ne répond pas. <strong>Garanties à tester</strong> (redémarrage, coupure du 514, arrêt brutal) : ⬜</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-bash">sudo rsyslogd -N1                                   # syntaxe
+sudo systemctl restart rsyslog &amp;&amp; sudo systemctl status rsyslog --no-pager
+grep -rl omfwd /etc/rsyslog.d/                      # une seule règle d'envoi : sinon chaque message arrive en double
+</code></pre>
+<p><strong>Deux tests différents</strong> — ne pas les confondre :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Commande (sur la VM émettrice)</th>
+<th>Ce qu'il prouve</th>
+<th>Résultat du 06/11</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Direct</strong></td>
+<td><code>logger -n 10.0.30.3 -P 514 -T -t TEST-WEB01 "TEST SYSLOG WEB01 - communication inter-VLAN OK"</code></td>
+<td>Le réseau et pfSense laissent passer le 514 (n'utilise <strong>pas</strong> Rsyslog)</td>
+<td>✅ 8 VM (capture 21)</td>
+</tr>
+<tr>
+<td><strong>Automatique</strong></td>
+<td><code>logger -t SYSLOG-AUTO "TEST AUTOMATIQUE DEPUIS $(hostname)"</code></td>
+<td>Rsyslog local transmet <strong>tout seul</strong> ce qu'il reçoit</td>
+<td>✅ <strong>8/8</strong> (capture 22)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Contrôle — uniquement SUR sio2527-ZABBIX-ypaugy — 10.0.30.3</strong> (le fichier central n'existe pas sur les émetteurs : INC-07) :</p>
+<pre><code class="language-bash">sudo grep 'TEST AUTOMATIQUE DEPUIS' /var/log/remote-syslog/central.log
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>VM</th>
+<th>IP</th>
+<th><code>SYSLOG-AUTO</code> visible</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sio2527-WEB-01-ypaugy</td>
+<td>10.0.10.1</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>sio2527-WEB-02-ypaugy</td>
+<td>10.0.10.4</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>sio2527-HAPROXY-ypaugy</td>
+<td>10.0.10.2</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>sio2527-GLPI-01-ypaugy</td>
+<td>10.0.10.3</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>sio2527-MYSQL-01-ypaugy</td>
+<td>10.0.20.1</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>sio2527-MYSQL-02-ypaugy</td>
+<td>10.0.20.2</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>sio2527-MYSQL-03-ypaugy</td>
+<td>10.0.20.3</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>sio2527-guacamole-01-ypaugy</td>
+<td>10.0.30.2</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table></div>
+<p>La même capture montre de <strong>vrais</strong> événements <code>sudo</code> (plusieurs serveurs) et <code>mariadbd</code> (MYSQL-01) : la collecte ne se limite pas aux messages de test. Elle ne prouve pas que les fichiers applicatifs (Apache access/error, HAProxy, GLPI) sont collectés.</p>
+<h2 id="5-restant-a-faire">5. Restant à faire — ⬜</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Travail</th>
+<th>Où</th>
+<th>Preuve attendue</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Journaux de pfSense vers <code>10.0.30.3:514/UDP</code></td>
+<td>fw-01 : <a href="/procedure?id=mo-10-pfsense-journalisation">MO-10 §5</a></td>
+<td>Hôte pfSense visible dans LogAnalyzer</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Journaux Windows (adm-01, cli-01)</td>
+<td>Méthode à choisir (agent Syslog pour Windows, ou transfert des événements avec relais) ; <strong>pas</strong> de commande <code>apt</code> sur Windows</td>
+<td>Un événement Windows réel dans LogAnalyzer</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Résilience des 8 émetteurs</td>
+<td>Une VM pilote : redémarrage, puis <code>logger -t SYSLOG-AUTO</code> ; coupure du 514 puis rétablissement</td>
+<td>Messages arrivés après le redémarrage et après la coupure</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Rotation de <code>central.log</code></td>
+<td>10.0.30.3, proposition ci-dessous</td>
+<td><code>logrotate -d</code> puis une vraie rotation en maintenance</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Verrouillage LogAnalyzer</td>
+<td>§3, étape 5</td>
+<td><code>install.php</code> → <code>404</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>Accès chiffré</td>
+<td>Tunnel SSH, VPN (réalisation 2) ou HTTPS</td>
+<td>Plus d'identifiants en clair</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Fichiers applicatifs</td>
+<td>Choisir les fichiers utiles (Apache, HAProxy, GLPI) sans doublon ni donnée sensible</td>
+<td>Lignes de ces fichiers dans LogAnalyzer</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Rotation proposée</strong> (🟨 non testée) — fichier <code>/etc/logrotate.d/remote-syslog</code> sur 10.0.30.3 ; 26 semaines ≈ 6 mois, durée des journaux de connexion du DAT R1 :</p>
+<pre><code class="language-text">/var/log/remote-syslog/central.log {
+    weekly
+    rotate 26
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 root www-data
+    postrotate
+        /usr/lib/rsyslog/rsyslog-rotate
+    endscript
+}
+</code></pre>
+<pre><code class="language-bash">sudo logrotate -d /etc/logrotate.d/remote-syslog   # simulation
+df -h / &amp;&amp; sudo du -sh /var/log/remote-syslog       # place restante et volume réel, à noter chaque semaine
+</code></pre>
+<p>Tunnel SSH en attendant le VPN (🟨) — la source vue par Apache est alors <code>127.0.0.1</code>, autorisée par <code>Require local</code> :</p>
+<pre><code class="language-powershell"># SUR le poste d'administration Windows
+ssh -p 2232 -L 18085:127.0.0.1:8085 &lt;COMPTE_SSH&gt;@10.4.0.198     # puis http://127.0.0.1:18085/
+</code></pre>
+<h2 id="6-securite-et-exploitation">6. Sécurité et exploitation</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Risque</th>
+<th>Mesure</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Identifiants LogAnalyzer en clair (HTTP Basic sans TLS)</td>
+<td>Accès de <strong>labo provisoire</strong> ; sources restreintes dans pfSense et Apache ; cible : tunnel SSH, VPN ou HTTPS</td>
+<td>⬜ chiffrement</td>
+</tr>
+<tr>
+<td>Journaux lisibles par trop de monde</td>
+<td><code>central.log</code> en <code>0640 root:www-data</code> ; le compte <code>zabbix</code> est refusé (voulu, INC-02)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Disque plein</td>
+<td>Rotation ; déclencheur Zabbix d'espace disque du modèle Linux</td>
+<td>⬜ rotation</td>
+</tr>
+<tr>
+<td>Syslog en clair entre zones</td>
+<td>Flux interne au labo ; aucun NAT 514</td>
+<td>✅ pas de NAT · TLS non prévu</td>
+</tr>
+<tr>
+<td>Une seule VM pour supervision <strong>et</strong> journaux</td>
+<td>Les émetteurs mettent en file ; séparation des fonctions à étudier</td>
+<td>risque assumé</td>
+</tr>
+<tr>
+<td>Journaux = données personnelles (adresses, comptes)</td>
+<td>Accès réservé aux administrateurs, durée limitée (RGPD)</td>
+<td>✅ accès · ⬜ durée</td>
+</tr>
+<tr>
+<td><code>Aborted connection … to db: 'zabbix'</code> sur MYSQL-01</td>
+<td>Événement observé, <strong>pas</strong> une panne : surveiller sa fréquence (OBS-11)</td>
+<td>à surveiller</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="retour-arriere">Retour arrière</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Ce qu'on annule</th>
+<th>Commande</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Liste d'adresses Apache (10.0.30.3)</td>
+<td>Remettre le bloc <code>Require</code> précédent (copie <code>.bak</code> avant toute modification), <code>apache2ctl configtest</code>, <code>systemctl reload apache2</code></td>
+</tr>
+<tr>
+<td>Site 8085 complet (10.0.30.3)</td>
+<td><code>sudo a2dissite loganalyzer-8085 &amp;&amp; sudo systemctl reload apache2</code> (et retirer <code>Listen 8085</code>) — Zabbix reste sur 80</td>
+</tr>
+<tr>
+<td>Récepteur Rsyslog (10.0.30.3)</td>
+<td><code>sudo mv /etc/rsyslog.d/10-central-receiver.conf /root/ &amp;&amp; sudo systemctl restart rsyslog</code></td>
+</tr>
+<tr>
+<td>Envoi depuis un serveur (sur cette VM)</td>
+<td><code>sudo mv /etc/rsyslog.d/90-centralisation.conf /root/ &amp;&amp; sudo systemctl restart rsyslog</code></td>
+</tr>
+<tr>
+<td>pfSense</td>
+<td><a href="/procedure?id=mo-10-pfsense-journalisation">MO-10 §6</a></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="diagnostic-par-symptome">Diagnostic par symptôme</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Symptôme</th>
+<th>Cause probable</th>
+<th>Premier contrôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Test-NetConnection 10.4.0.198 -Port 2233</code> : <code>False</code></td>
+<td>NAT 2233 absent, poste hors de la source autorisée, règle sous <code>BLOCK ALL</code></td>
+<td>pfSense : <em>Firewall / NAT</em>, <em>Rules / WAN</em>, <em>Status / System Logs / Firewall</em></td>
+</tr>
+<tr>
+<td>HTTP <strong>401</strong></td>
+<td>Apache est atteint : saisir le compte</td>
+<td>—</td>
+</tr>
+<tr>
+<td>HTTP <strong>403</strong></td>
+<td>Réseau du poste absent de <code>Require ip</code></td>
+<td><code>loganalyzer-error.log</code> : <code>AH01630</code> et l'adresse refusée</td>
+</tr>
+<tr>
+<td><code>main configuration file is missing!</code></td>
+<td>Assistant pas encore joué</td>
+<td>§3</td>
+</tr>
+<tr>
+<td>HTTP <strong>500</strong></td>
+<td>Erreur PHP</td>
+<td><code>loganalyzer-error.log</code> ; ne pas modifier pfSense à l'aveugle</td>
+</tr>
+<tr>
+<td><code>No such file or directory</code> sur <code>central.log</code></td>
+<td>Commande lancée sur un <strong>émetteur</strong></td>
+<td>Lire le fichier sur 10.0.30.3</td>
+</tr>
+<tr>
+<td><code>rsyslogd: command not found</code> sur un émetteur</td>
+<td>Paquet Rsyslog absent</td>
+<td><code>apt install rsyslog</code> (§4)</td>
+</tr>
+<tr>
+<td>Rien de WEB-01 dans <code>central.log</code></td>
+<td>Rsyslog arrêté, règle vWEB absente</td>
+<td>test <strong>direct</strong> d'abord (réseau), puis test <strong>automatique</strong> (Rsyslog)</td>
+</tr>
+<tr>
+<td>Zabbix ne répond plus sur 2231</td>
+<td>Site 80 modifié par erreur</td>
+<td><code>sudo apache2ctl -S</code> ; restaurer le site Zabbix</td>
+</tr>
+</tbody>
+</table></div>

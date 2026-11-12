@@ -1,0 +1,10 @@
+<p>Virtualisation : de l'ISO au modèle (template) réutilisable.</p>
+<h2 id="etapes">Étapes</h2>
+<ol>
+<li>Téléverser l'ISO : <em>local → ISO Images → Upload</em>.</li>
+<li><em>Create VM</em> : nom, ISO, disque (VirtIO SCSI), CPU (type <code>host</code>), RAM, réseau (<code>vmbr0</code>, modèle VirtIO).</li>
+<li>Installer Debian (sans environnement de bureau, cocher « serveur SSH »).</li>
+<li>Installer l'agent : <code>apt install qemu-guest-agent</code> puis l'activer dans <em>Options → QEMU Guest Agent</em>.</li>
+<li>Transformer une VM propre en <strong>Template</strong> pour cloner rapidement les suivantes.</li>
+<li>Programmer des sauvegardes : <em>Datacenter → Backup</em>.</li>
+</ol>

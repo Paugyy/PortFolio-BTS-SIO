@@ -1,0 +1,18 @@
+<p>AD DS, DNS, unités d'organisation, utilisateurs et GPO.</p>
+<h2 id="dans-linterface-graphique">Dans l'interface graphique</h2>
+<ol>
+<li>Donner une <strong>IP fixe</strong> au serveur et le renommer (ex : <code>SRV-AD01</code>), puis redémarrer.</li>
+<li><em>Gestionnaire de serveur → Ajouter des rôles</em> : cocher <strong>AD DS</strong> (et DNS).</li>
+<li>Cliquer sur le drapeau → <em>Promouvoir ce serveur en contrôleur de domaine</em> → nouvelle forêt (ex : <code>entreprise.local</code>).</li>
+<li>Après redémarrage : <em>Utilisateurs et ordinateurs Active Directory</em> → créer des OU (Direction, Compta, Informatique…).</li>
+<li>Créer utilisateurs et groupes dans les OU.</li>
+<li><em>Gestion des stratégies de groupe</em> : créer une GPO, la lier à une OU, puis <code>gpupdate /force</code> sur le client.</li>
+<li>Sur le poste client : DNS = IP du contrôleur de domaine, puis joindre le domaine.</li>
+</ol>
+<h2 id="la-meme-chose-en-powershell">La même chose en PowerShell</h2>
+<pre><code class="language-powershell">Install-WindowsFeature AD-Domain-Services -IncludeManagementTools
+Install-ADDSForest -DomainName &quot;entreprise.local&quot;
+New-ADOrganizationalUnit -Name &quot;Informatique&quot;
+New-ADUser -Name &quot;Jean Dupont&quot; -SamAccountName jdupont -Path &quot;OU=Informatique,DC=entreprise,DC=local&quot; -AccountPassword (Read-Host -AsSecureString) -Enabled $true
+Add-Computer -DomainName entreprise.local -Restart   # sur le client
+</code></pre>

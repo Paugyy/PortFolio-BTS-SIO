@@ -1,0 +1,1862 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 06/11/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Méthode de diagnostic, puis incidents classés par composant (symptôme → cause → correction).</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+<p>⚠️ <strong>Écarts avec le labo réel</strong> (configuration relevée le 01/10/2026, voir le DAT §7.2) :
+HAProxy contrôle ses serveurs <strong>toutes les 2 s</strong> (<code>inter 2s fall 3 rise 2</code>), le contrôle SQL est un simple
+test de port (<code>tcp-check</code>, pas <code>mysql-check</code>), et il n'y a <strong>ni page de statistiques (8404) ni en-tête
+<code>X-Served-By</code></strong> : les passages qui les citent décrivent une cible, pas l'existant. adm-01 est le contrôleur
+de domaine Windows : les commandes notées « sur adm-01 » se jouent depuis une session du bastion Guacamole.</p>
+</blockquote>
+<hr />
+<h2 id="methodologie-de-diagnostic">Méthodologie de diagnostic</h2>
+<h3 id="demarche">Démarche</h3>
+<pre><code class="language-text">1. Observer      Quel est le symptôme exact ? (message, code, depuis quand, qui est touché)
+2. Délimiter     Quel maillon de la chaîne ? (client → pfSense → HAProxy → web → HAProxy → Galera)
+3. Hypothèses    Quelles causes possibles, de la plus probable à la moins probable ?
+4. Tester        Une hypothèse à la fois, avec une commande dont le résultat est sans ambiguïté
+5. Corriger      Le minimum nécessaire, en sauvegardant avant de modifier
+6. Valider       Rejouer le test qui échouait + les tests de non-régression
+7. Documenter    incidents.md
+</code></pre>
+<h3 id="suivre-la-chaine">Suivre la chaîne</h3>
+<p>Pour WordPress, tester chaque maillon <strong>de l'intérieur vers l'extérieur</strong> :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Maillon</th>
+<th>Commande</th>
+<th>Machine</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Galera</td>
+<td><code>./scripts/validation/check-galera.sh</code></td>
+<td>bdd-0X</td>
+</tr>
+<tr>
+<td>2</td>
+<td>HAProxy → Galera</td>
+<td><code>nc -zv 10.0.20.1 3306</code></td>
+<td>haproxy</td>
+</tr>
+<tr>
+<td>3</td>
+<td>SQL via HAProxy</td>
+<td><code>mariadb -h 10.0.10.2 -u wordpress -p -e 'SELECT 1'</code></td>
+<td>web-01</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Apache/PHP local</td>
+<td><code>curl -sI http://localhost/wp-login.php</code></td>
+<td>web-01</td>
+</tr>
+<tr>
+<td>5</td>
+<td>HAProxy → web</td>
+<td><code>curl -sI http://10.0.10.1/</code></td>
+<td>haproxy</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Point d'entrée</td>
+<td><code>curl -sI http://10.0.10.2/</code></td>
+<td>adm-01</td>
+</tr>
+<tr>
+<td>7</td>
+<td>NAT</td>
+<td><code>curl -sI http://10.4.0.198:8081/</code></td>
+<td>Poste labo</td>
+</tr>
+</tbody>
+</table></div>
+<p>Le premier maillon en échec localise le problème.</p>
+<h3 id="lire-les-messages-reseau">Lire les messages réseau</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>Signification</th>
+<th>Où chercher</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Connection refused</code></td>
+<td>Le paquet est arrivé, rien n'écoute sur ce port/IP</td>
+<td>Service arrêté, <code>bind-address</code>, mauvais port</td>
+</tr>
+<tr>
+<td><code>Connection timed out</code></td>
+<td>Aucune réponse : paquet bloqué ou perdu</td>
+<td>Pare-feu (pfSense, nftables), routage, VM éteinte</td>
+</tr>
+<tr>
+<td><code>No route to host</code></td>
+<td>Pas de chemin ou hôte injoignable en couche 2</td>
+<td>IP, passerelle, VLAN</td>
+</tr>
+<tr>
+<td><code>Name or service not known</code></td>
+<td>Résolution DNS impossible</td>
+<td><code>/etc/resolv.conf</code>, DNS pfSense</td>
+</tr>
+<tr>
+<td>HTTP <code>503</code> (HAProxy)</td>
+<td>Aucun serveur sain dans le backend</td>
+<td>Health-checks, backends</td>
+</tr>
+<tr>
+<td>HTTP <code>502</code> (HAProxy)</td>
+<td>Réponse invalide du backend</td>
+<td>Apache/PHP plante</td>
+</tr>
+<tr>
+<td>HTTP <code>404</code></td>
+<td>Ressource introuvable</td>
+<td>DocumentRoot, réécriture</td>
+</tr>
+<tr>
+<td>HTTP <code>500</code></td>
+<td>Erreur applicative</td>
+<td>Journal Apache / PHP</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="boite-a-outils">Boîte à outils</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Besoin</th>
+<th>Commande</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>État d'un service</td>
+<td><code>systemctl status &lt;service&gt; --no-pager</code></td>
+</tr>
+<tr>
+<td>Journal d'un service</td>
+<td><code>journalctl -u &lt;service&gt; -n 50 --no-pager</code> (<code>-f</code> en direct)</td>
+</tr>
+<tr>
+<td>Ports en écoute</td>
+<td><code>sudo ss -ltnp</code></td>
+</tr>
+<tr>
+<td>Test de port distant</td>
+<td><code>nc -zv -w 3 &lt;ip&gt; &lt;port&gt;</code></td>
+</tr>
+<tr>
+<td>Test HTTP</td>
+<td><code>curl -sI &lt;url&gt;</code> ; <code>curl -v &lt;url&gt;</code></td>
+</tr>
+<tr>
+<td>IP et routes</td>
+<td><code>ip -4 addr</code> ; <code>ip route</code></td>
+</tr>
+<tr>
+<td>Résolution</td>
+<td><code>getent hosts &lt;nom&gt;</code></td>
+</tr>
+<tr>
+<td>Espace disque</td>
+<td><code>df -h</code> ; <code>du -sh /var/lib/mysql</code></td>
+</tr>
+<tr>
+<td>Configuration Apache</td>
+<td><code>apachectl configtest</code> ; <code>apache2ctl -S</code></td>
+</tr>
+<tr>
+<td>Configuration HAProxy</td>
+<td><code>haproxy -c -f /etc/haproxy/haproxy.cfg</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="bonnes-pratiques">Bonnes pratiques</h3>
+<ul>
+<li><strong>Une modification à la fois</strong>, puis test : sinon impossible de savoir laquelle a corrigé (ou aggravé).</li>
+<li><strong>Sauvegarder</strong> un fichier avant de le modifier (<code>cp fichier fichier.$(date +%F).orig</code>).</li>
+<li><strong>Snapshot Proxmox</strong> avant une opération risquée (bootstrap Galera, changement de règles).</li>
+<li><strong>Noter</strong> les commandes et résultats au fil de l'eau : c'est la matière de incidents.md.</li>
+</ul>
+<hr />
+<h2 id="journal-des-incidents">Journal des incidents</h2>
+<p>Incidents <strong>réellement rencontrés</strong> pendant la construction du lab, documentés au format :
+<strong>Symptôme → Cause probable → Diagnostic → Commandes → Correction → Validation</strong>.</p>
+<blockquote>
+<p>Les messages d'erreur sont reproduits sous leur forme standard. Compléter les champs <em>Date</em> lors de la mise à jour du journal ; aucune donnée sensible (mot de passe, clé) n'y figure.</p>
+</blockquote>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Titre</th>
+<th>Composant</th>
+<th>VM</th>
+<th>Gravité</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="#inc-01--cluster-galera-non-primary">INC-01</a></td>
+<td>Cluster Galera non Primary</td>
+<td>Galera</td>
+<td>bdd-0X</td>
+<td>Critique</td>
+</tr>
+<tr>
+<td><a href="#inc-02--bind-address-incorrect">INC-02</a></td>
+<td>bind-address incorrect</td>
+<td>MariaDB</td>
+<td>bdd-01/02/03</td>
+<td>Bloquant</td>
+</tr>
+<tr>
+<td><a href="#inc-03--dpkg-interrompu">INC-03</a></td>
+<td>dpkg interrompu</td>
+<td>APT</td>
+<td>Toutes</td>
+<td>Bloquant</td>
+</tr>
+<tr>
+<td><a href="#inc-04--rsync-absent">INC-04</a></td>
+<td>rsync absent</td>
+<td>Système</td>
+<td>bdd-0X, web-0X</td>
+<td>Bloquant</td>
+</tr>
+<tr>
+<td><a href="#inc-05--glpi--erreur-404-apache">INC-05</a></td>
+<td>GLPI : erreur 404 Apache</td>
+<td>Apache / GLPI</td>
+<td>glpi</td>
+<td>Majeur</td>
+</tr>
+<tr>
+<td><a href="#inc-06--ssh-permission-denied-publickey">INC-06</a></td>
+<td>SSH Permission denied (publickey)</td>
+<td>SSH</td>
+<td>Toutes</td>
+<td>Bloquant</td>
+</tr>
+<tr>
+<td><a href="#inc-07--remote-host-identification-has-changed">INC-07</a></td>
+<td>REMOTE HOST IDENTIFICATION HAS CHANGED</td>
+<td>SSH</td>
+<td>adm-01</td>
+<td>Sécurité</td>
+</tr>
+<tr>
+<td><a href="#inc-08--conflit-avec-le-compte-système-haproxy">INC-08</a></td>
+<td>Conflit avec le compte système haproxy</td>
+<td>HAProxy</td>
+<td>haproxy</td>
+<td>Majeur</td>
+</tr>
+<tr>
+<td>Registre du 06/11 : INC-01 à INC-10, OBS-11</td>
+<td>Journalisation centralisée : droits, NAT 2233, <code>403</code> Apache, Rsyslog absent, clés SSH (06/11/2026)</td>
+<td>Rsyslog · Apache · pfSense · SSH</td>
+<td>zabbix, fw-01, émetteurs</td>
+<td>Majeur</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h3 id="inc-01-cluster-galera-non-primary">INC-01 — Cluster Galera non Primary</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : bdd-0X</em></p>
+<p><strong>Symptôme</strong></p>
+<ul>
+<li>WordPress : « Erreur lors de la connexion à la base de données ».</li>
+<li>Sur un nœud : <code>ERROR 1047 (08S01): WSREP has not yet prepared node for application use</code>.</li>
+<li><code>wsrep_cluster_status = non-Primary</code>.</li>
+</ul>
+<p><strong>Cause probable</strong></p>
+<p>Perte de quorum : le nœud ne voit plus la majorité du cluster (arrêt brutal de plusieurs nœuds, coupure réseau, redémarrage de l'hôte Proxmox). Par sécurité (anti split-brain), un composant minoritaire refuse toute requête.</p>
+<p><strong>Diagnostic</strong></p>
+<p>Déterminer combien de nœuds tournent, ce que chacun voit, et lequel est le plus à jour.</p>
+<p><strong>Commandes</strong></p>
+<pre><code class="language-bash"># SUR CHAQUE NŒUD
+systemctl is-active mariadb
+sudo mariadb -e &quot;SHOW STATUS WHERE Variable_name IN ('wsrep_cluster_size','wsrep_cluster_status','wsrep_local_state_comment','wsrep_last_committed');&quot;
+# SUR CHAQUE NŒUD ARRÊTÉ
+sudo cat /var/lib/mysql/grastate.dat
+sudo galera_recovery
+</code></pre>
+<p><strong>Correction</strong></p>
+<p>Selon le scénario de <a href="/procedure?id=mo-01-galera">MO-1-Cluster-Galera.md</a> :</p>
+<ul>
+<li>nœuds en marche, réseau rétabli → le cluster se reforme seul ;</li>
+<li>tous arrêtés → bootstrap du nœud <code>safe_to_bootstrap: 1</code> (ou du <code>seqno</code> le plus élevé), <strong>puis</strong> <code>systemctl start mariadb</code> sur les autres.</li>
+</ul>
+<p>Jamais de <code>galera_new_cluster</code> sur plusieurs nœuds.</p>
+<p><strong>Validation</strong></p>
+<pre><code class="language-bash"># SUR CHAQUE NŒUD
+./scripts/validation/check-galera.sh       # 3 / Primary / Synced / ON
+</code></pre>
+<p><strong>Leçon</strong> : le comportement <code>non-Primary</code> est une protection, pas une panne de Galera. Un snapshot Proxmox avant chaque manipulation risquée simplifie la reprise.</p>
+<hr />
+<h3 id="inc-02-bind-address-incorrect">INC-02 — bind-address incorrect</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : bdd-01, bdd-02, bdd-03</em></p>
+<p><strong>Symptôme</strong></p>
+<pre><code class="language-text">ERROR 2002 (HY000): Can't connect to MySQL server on '10.0.20.2' (111 &quot;Connection refused&quot;)
+</code></pre>
+<p>Les nœuds ne se joignent pas sur 3306 ; le health-check HAProxy marque les serveurs DOWN.</p>
+<p><strong>Cause probable</strong></p>
+<p>Valeur par défaut Debian dans <code>/etc/mysql/mariadb.conf.d/50-server.cnf</code> :</p>
+<pre><code class="language-ini">bind-address = 127.0.0.1
+</code></pre>
+<p>MariaDB n'écoute que sur la boucle locale : toute connexion venant du réseau est <strong>refusée</strong> (le paquet arrive, mais aucun processus n'écoute sur l'IP du VLAN).</p>
+<p><strong>Diagnostic</strong></p>
+<p><code>Connection refused</code> (refus immédiat) et non <code>timed out</code> : ce n'est pas le pare-feu, c'est le service.</p>
+<p><strong>Commandes</strong></p>
+<pre><code class="language-bash"># SUR bdd-02
+sudo ss -ltnp | grep 3306                     # 127.0.0.1:3306 → problème
+grep -n bind-address /etc/mysql/mariadb.conf.d/*.cnf
+</code></pre>
+<p><strong>Correction</strong></p>
+<p>Chaque nœud écoute sur <strong>sa propre IP</strong> du VLAN vBDD :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Nœud</th>
+<th><code>bind-address</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>bdd-01</td>
+<td><code>10.0.20.1</code></td>
+</tr>
+<tr>
+<td>bdd-02</td>
+<td><code>10.0.20.2</code></td>
+</tr>
+<tr>
+<td>bdd-03</td>
+<td><code>10.0.20.3</code></td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-bash"># SUR bdd-02 (adapter l'IP sur chaque nœud)
+sudo sed -i 's/^bind-address.*/bind-address            = 10.0.20.2/' /etc/mysql/mariadb.conf.d/50-server.cnf
+sudo systemctl restart mariadb
+</code></pre>
+<p>Choix de l'IP précise plutôt que <code>0.0.0.0</code> : MariaDB n'est joignable que par l'interface prévue.</p>
+<p><strong>Validation</strong></p>
+<pre><code class="language-bash"># SUR bdd-02
+sudo ss -ltnp | grep 3306                     # 10.0.20.2:3306
+# SUR haproxy
+nc -zv 10.0.20.2 3306                         # succeeded
+</code></pre>
+<p>La CI vérifie désormais que <code>bind-address</code> = <code>wsrep_node_address</code> dans les fichiers d'exemple.</p>
+<hr />
+<h3 id="inc-03-dpkg-interrompu">INC-03 — dpkg interrompu</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : plusieurs</em></p>
+<p><strong>Symptôme</strong></p>
+<pre><code class="language-text">E: dpkg was interrupted, you must manually run 'sudo dpkg --configure -a' to correct the problem.
+</code></pre>
+<p>Plus aucune commande <code>apt install</code> ne fonctionne.</p>
+<p><strong>Cause probable</strong></p>
+<p>Installation interrompue : session SSH coupée, VM redémarrée ou <code>Ctrl+C</code> pendant <code>apt install</code>, laissant des paquets à moitié configurés.</p>
+<p><strong>Diagnostic</strong></p>
+<pre><code class="language-bash"># SUR LA VM CONCERNÉE
+sudo dpkg --audit
+ps aux | grep -E 'apt|dpkg' | grep -v grep      # une autre installation en cours ?
+</code></pre>
+<p><strong>Commandes / Correction</strong></p>
+<pre><code class="language-bash"># SUR LA VM CONCERNÉE
+sudo dpkg --configure -a
+sudo apt --fix-broken install -y
+sudo apt update
+</code></pre>
+<p><strong>Validation</strong></p>
+<pre><code class="language-bash">sudo dpkg --audit            # aucune sortie
+sudo apt install -y rsync    # une installation fonctionne à nouveau
+</code></pre>
+<p><strong>Prévention</strong> : lancer les installations longues dans <code>tmux</code> ou <code>screen</code> pour survivre à une déconnexion. Fiche : apt-dpkg.md</p>
+<hr />
+<h3 id="inc-04-rsync-absent">INC-04 — rsync absent</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : bdd-0X / web-0X</em></p>
+<p><strong>Symptôme</strong></p>
+<pre><code class="language-text">bash: rsync: command not found
+</code></pre>
+<p>Côté Galera, un nœud ne parvient pas à rejoindre le cluster (journal : échec du script <code>wsrep_sst_rsync</code>) ; côté WordPress, la synchronisation web-01 → web-02 échoue.</p>
+<p><strong>Cause probable</strong></p>
+<p><code>rsync</code> n'est pas installé par défaut sur une Debian minimale. La méthode SST <code>wsrep_sst_method = rsync</code> et la synchronisation de fichiers l'exigent <strong>aux deux extrémités</strong> (le binaire distant est lancé par SSH ou par le script SST).</p>
+<p><strong>Diagnostic</strong></p>
+<pre><code class="language-bash"># SUR LES DEUX MACHINES CONCERNÉES
+command -v rsync || echo &quot;rsync absent&quot;
+# SUR LE NŒUD QUI NE REJOINT PAS
+sudo journalctl -u mariadb -n 50 --no-pager | grep -i -E 'sst|rsync'
+</code></pre>
+<p><strong>Correction</strong></p>
+<pre><code class="language-bash"># SUR bdd-01, bdd-02, bdd-03, web-01, web-02
+sudo apt install -y rsync
+</code></pre>
+<p><strong>Validation</strong></p>
+<pre><code class="language-bash">rsync --version | head -n1
+# Galera : le nœud rejoint
+./scripts/validation/check-galera.sh
+</code></pre>
+<p><code>rsync</code> fait désormais partie des paquets installés par <code>install-galera.sh</code> et <code>install-wordpress-deps.sh</code>.</p>
+<hr />
+<h3 id="inc-05-glpi-erreur-404-apache">INC-05 — GLPI : erreur 404 Apache</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : glpi</em></p>
+<p><strong>Symptôme</strong></p>
+<p>La page d'accueil de GLPI s'affiche, mais la navigation (<code>/front/central.php</code>, après connexion) renvoie <code>404 Not Found</code>.</p>
+<p><strong>Cause probable</strong></p>
+<p>Problème de <strong>RewriteRule</strong> : GLPI 10 route toutes les requêtes vers <code>public/index.php</code>. Les règles de réécriture n'étaient pas appliquées correctement (placées hors du bloc <code>&lt;Directory&gt;</code>, et/ou <code>mod_rewrite</code> non activé), et <code>DocumentRoot</code> ne pointait pas sur <code>public/</code>.</p>
+<p><strong>Diagnostic</strong></p>
+<pre><code class="language-bash"># SUR glpi
+apache2ctl -M | grep rewrite
+apache2ctl -S
+sudo grep -n -i -E 'DocumentRoot|Directory|Rewrite' /etc/apache2/sites-available/glpi.conf
+sudo tail -n 20 /var/log/apache2/glpi-error.log
+</code></pre>
+<p><strong>Correction</strong></p>
+<pre><code class="language-bash"># SUR glpi
+sudo a2enmod rewrite
+sudo cp configs/apache/glpi.conf.example /etc/apache2/sites-available/glpi.conf
+sudo apachectl configtest &amp;&amp; sudo systemctl reload apache2
+</code></pre>
+<p>Avec : <code>DocumentRoot /var/www/glpi/public</code> et les <code>RewriteCond</code>/<code>RewriteRule</code> <strong>dans</strong> <code>&lt;Directory /var/www/glpi/public&gt;</code>. Explication : <a href="/procedure?id=mo-04-glpi">MO-4-GLPI.md</a>.</p>
+<p><strong>Validation</strong></p>
+<pre><code class="language-bash">curl -sI http://10.0.10.3/front/central.php | head -n1    # 302 (vers login), plus de 404
+./scripts/validation/check-glpi.sh
+</code></pre>
+<hr />
+<h3 id="inc-06-ssh-permission-denied-publickey">INC-06 — SSH Permission denied (publickey)</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : plusieurs</em></p>
+<p><strong>Symptôme</strong></p>
+<pre><code class="language-text">&lt;ADMIN_USER&gt;@10.0.20.1: Permission denied (publickey).
+</code></pre>
+<p><strong>Cause probable</strong></p>
+<p>Confusion entre clé privée et clé publique : la <strong>clé privée</strong> avait été placée dans <code>~/.ssh/authorized_keys</code> du serveur.</p>
+<p><code>authorized_keys</code> doit contenir les <strong>clés publiques autorisées</strong> (<code>id_ed25519.pub</code>, une ligne commençant par <code>ssh-ed25519 AAAA…</code>), et <strong>non</strong> la clé privée (bloc multiligne dont l'en-tête contient <code>BEGIN OPENSSH PRIVATE KEY</code>). Autres causes possibles : droits trop ouverts sur <code>~/.ssh</code>, mauvais utilisateur.</p>
+<p><strong>Diagnostic</strong></p>
+<pre><code class="language-bash"># SUR adm-01 — mode verbeux : quelle clé est proposée ?
+ssh -v &lt;ADMIN_USER&gt;@10.0.20.1 2&gt;&amp;1 | grep -E 'Offering|Authentications|denied'
+# SUR LE SERVEUR (console Proxmox)
+head -c 40 ~/.ssh/authorized_keys; echo       # doit commencer par ssh-ed25519
+ls -ld ~/.ssh ~/.ssh/authorized_keys
+sudo journalctl -u ssh -n 20 --no-pager
+</code></pre>
+<p><strong>Correction</strong></p>
+<pre><code class="language-bash"># SUR LE SERVEUR : retirer toute clé privée copiée par erreur
+rm ~/.ssh/authorized_keys
+# SUR adm-01 : déposer la clé PUBLIQUE
+ssh-copy-id -i ~/.ssh/id_ed25519.pub &lt;ADMIN_USER&gt;@10.0.20.1
+# SUR LE SERVEUR : droits
+chmod 700 ~/.ssh &amp;&amp; chmod 600 ~/.ssh/authorized_keys
+</code></pre>
+<p>Une clé privée qui a transité sur un serveur doit être considérée comme <strong>exposée</strong> : en générer une nouvelle et retirer l'ancienne clé publique de tous les serveurs.</p>
+<p><strong>Validation</strong></p>
+<pre><code class="language-bash"># SUR adm-01
+ssh -o BatchMode=yes &lt;ADMIN_USER&gt;@10.0.20.1 hostname
+</code></pre>
+<hr />
+<h3 id="inc-07-remote-host-identification-has-changed">INC-07 — REMOTE HOST IDENTIFICATION HAS CHANGED</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : adm-01 (client)</em></p>
+<p><strong>Symptôme</strong></p>
+<pre><code class="language-text">@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@    WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED!     @
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+IT IS POSSIBLE THAT SOMEONE IS DOING SOMETHING NASTY!
+Host key verification failed.
+</code></pre>
+<p><strong>Cause probable</strong></p>
+<p>La VM répondant sur cette IP présente une clé d'hôte différente de celle mémorisée : VM <strong>réinstallée</strong> (nouvelles clés générées) ou IP <strong>réattribuée</strong> à une autre VM. Mais c'est aussi exactement le symptôme d'une attaque de l'<strong>homme du milieu</strong>.</p>
+<p><strong>Diagnostic</strong></p>
+<p>Ne <strong>pas</strong> supprimer l'entrée par réflexe. Vérifier d'abord :</p>
+<ol>
+<li>La VM a-t-elle été réinstallée ou son IP réaffectée (par moi, récemment) ?</li>
+<li>L'empreinte annoncée correspond-elle à celle de la VM, lue par un canal de confiance ?</li>
+</ol>
+<pre><code class="language-bash"># SUR LA VM (console Proxmox, canal de confiance)
+ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+</code></pre>
+<p>Comparer avec l'empreinte <code>SHA256:…</code> affichée dans l'avertissement.</p>
+<p><strong>Correction</strong></p>
+<p>Uniquement si les empreintes correspondent :</p>
+<pre><code class="language-bash"># SUR adm-01
+ssh-keygen -R 10.0.20.1
+ssh &lt;ADMIN_USER&gt;@10.0.20.1          # accepter la nouvelle empreinte
+</code></pre>
+<p>Si elles ne correspondent pas : <strong>ne pas se connecter</strong> ; rechercher une usurpation d'IP (doublon d'adresse, VM inconnue).</p>
+<p><strong>Validation</strong></p>
+<p>Connexion sans avertissement ; nouvelle empreinte enregistrée dans <code>~/.ssh/known_hosts</code>.</p>
+<hr />
+<h3 id="inc-08-conflit-avec-le-compte-systeme-haproxy">INC-08 — Conflit avec le compte système haproxy</h3>
+<p><em>Date : <code>&lt;AAAA-MM-JJ&gt;</code> — VM : haproxy</em></p>
+<p><strong>Symptôme</strong></p>
+<p>Erreurs ou avertissements lors de <code>apt install haproxy</code> concernant l'utilisateur <code>haproxy</code> déjà existant ; service démarré avec un compte doté d'un shell et d'un répertoire personnel.</p>
+<p><strong>Cause probable</strong></p>
+<p>Lors de l'installation de Debian, l'utilisateur <strong>humain</strong> avait été nommé <code>haproxy</code>. Or le paquet <code>haproxy</code> crée un compte <strong>système</strong> du même nom (uid &lt; 1000, shell <code>/usr/sbin/nologin</code>, home <code>/var/lib/haproxy</code>) pour exécuter le service avec des privilèges minimaux. Les deux usages entrent en conflit.</p>
+<p><strong>Diagnostic</strong></p>
+<pre><code class="language-bash"># SUR haproxy
+getent passwd haproxy          # uid ≥ 1000 et /bin/bash → compte humain : problème
+id haproxy
+</code></pre>
+<p><strong>Correction</strong></p>
+<p>Séparer les deux rôles :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Compte</th>
+<th>Type</th>
+<th>Usage</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>haproxyadmin</code></td>
+<td>Humain (uid ≥ 1000, sudo)</td>
+<td>Administration de la VM</td>
+</tr>
+<tr>
+<td><code>haproxy</code></td>
+<td>Système (paquet)</td>
+<td>Exécution du service</td>
+</tr>
+</tbody>
+</table></div>
+<pre><code class="language-bash"># SUR haproxy (depuis la console ou un autre compte sudo)
+sudo adduser haproxyadmin
+sudo usermod -aG sudo haproxyadmin
+# se reconnecter en haproxyadmin, vérifier sudo, puis :
+sudo deluser --remove-home haproxy      # supprime le compte humain
+sudo apt install --reinstall haproxy    # recrée le compte système proprement
+</code></pre>
+<p><strong>Validation</strong></p>
+<pre><code class="language-bash">getent passwd haproxy          # haproxy:x:1xx:...:/var/lib/haproxy:/usr/sbin/nologin
+ps -o user= -C haproxy | sort -u   # haproxy
+./scripts/validation/check-haproxy.sh
+</code></pre>
+<p><code>install-haproxy.sh</code> détecte désormais ce cas avant l'installation.</p>
+<hr />
+<h3 id="journalisation-centralisee-06112026">Journalisation centralisée (06/11/2026)</h3>
+<p>Registre complet (contexte, erreur exacte, cause, correction exécutée, validation) : <code>../incidents/2026-11-06-journalisation-centralisee.md</code>. Numérotation propre à ce registre.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Symptôme</th>
+<th>Cause</th>
+<th>Correction</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>INC-01</td>
+<td><code>install: invalid user 'syslog'</code></td>
+<td>Pas de compte <code>syslog</code> sur Debian 12</td>
+<td><code>root:www-data</code>, <code>0750</code> / <code>0640</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>INC-02</td>
+<td><code>Permission denied</code> sur <code>central.log</code> (compte <code>zabbix</code>)</td>
+<td>Droits restreints, voulu</td>
+<td>Lecture avec <code>sudo</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>INC-03</td>
+<td><code>AH00558 … fully qualified domain name</code></td>
+<td>Pas de <code>ServerName</code> global</td>
+<td>Non bloquant (<code>Syntax OK</code>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>INC-04</td>
+<td><code>http://10.4.0.198:2233/</code> ne répond pas</td>
+<td>Ni NAT 2233 ni règle WAN vers 8085 dans l'export de 07:38</td>
+<td>Transfert mis en place (<a href="/procedure?id=mo-10-pfsense-journalisation">MO-10</a>)</td>
+<td>✅ (règles à relire)</td>
+</tr>
+<tr>
+<td>INC-05</td>
+<td><code>403</code>, <code>AH01630: client denied</code> pour <code>10.2.0.122</code></td>
+<td>Réseau du poste absent de <code>Require ip</code></td>
+<td>Réseau ajouté, <code>Require valid-user</code> conservé</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>INC-06</td>
+<td><code>main configuration file is missing!</code></td>
+<td>Assistant LogAnalyzer pas joué</td>
+<td><code>install.php</code>, source <code>SYSLOG-CENTRAL</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>INC-07</td>
+<td><code>central.log: No such file or directory</code> sur web-01</td>
+<td>Contrôle lancé sur l'émetteur</td>
+<td>Lire sur 10.0.30.3</td>
+<td>✅ procédure</td>
+</tr>
+<tr>
+<td>INC-08</td>
+<td><code>rsyslogd: command not found</code> sur web-01</td>
+<td>Rsyslog pas installé</td>
+<td><code>apt install rsyslog</code>, <code>enable --now</code></td>
+<td>✅ 8/8</td>
+</tr>
+<tr>
+<td>INC-09</td>
+<td><code>REMOTE HOST IDENTIFICATION HAS CHANGED</code> (MYSQL-03, 2227)</td>
+<td>Ancienne clé d'hôte dans <code>known_hosts</code></td>
+<td>Entrée ciblée retirée, nouvelle empreinte acceptée</td>
+<td>✅ (contrôle Proxmox à documenter)</td>
+</tr>
+<tr>
+<td>INC-10</td>
+<td><code>Permission denied (publickey)</code> (MYSQL-03)</td>
+<td>Cause non établie</td>
+<td>Compte, <code>authorized_keys</code>, droits vérifiés</td>
+<td>✅ connexion rétablie</td>
+</tr>
+<tr>
+<td>OBS-11</td>
+<td><code>mariadbd</code> : <code>Aborted connection … to db: 'zabbix'</code></td>
+<td>Non diagnostiqué</td>
+<td>—</td>
+<td>👁 à surveiller</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h3 id="ajouter-un-incident">Ajouter un incident</h3>
+<p>Copier un bloc ci-dessus, incrémenter l'ID, renseigner tous les champs, ajouter la ligne au tableau et un commit <code>docs(troubleshooting): add INC-0X ...</code>. Méthode : diagnostic-methodology.md.</p>
+<hr />
+<h2 id="pfsense-depannage">pfSense — Dépannage</h2>
+<h3 id="une-vm-ne-joint-pas-sa-passerelle">Une VM ne joint pas sa passerelle</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>ping 10.0.X0.254</code> échoue depuis une VM</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Mauvais tag VLAN sur la carte Proxmox, <code>vmbr1</code> non <em>VLAN aware</em>, interface pfSense non activée, mauvaise IP/masque dans la VM</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Comparer tag Proxmox, IP de la VM et interface pfSense</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><code>ip -4 addr</code> et <code>ip route</code> (VM) ; <code>qm config &lt;vmid&gt; \| grep net</code> (hôte Proxmox) ; <em>Status → Interfaces</em> (pfSense)</td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Corriger le tag (<code>qm set &lt;vmid&gt; --net0 virtio,bridge=vmbr1,tag=302</code>) ou l'adresse</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>ping -c 2 10.0.X0.254</code> réussi</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="un-flux-inter-vlan-est-bloque">Un flux inter-VLAN est bloqué</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>Connection timed out</code> entre deux VLAN (ex. HAProxy → bdd-01:3306)</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Règle absente, mal placée (sous un <em>Block</em>) ou sur la mauvaise interface (doit être sur l'interface <strong>source</strong>)</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Journal pare-feu ; <em>Diagnostics → States</em> pendant le test</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR haproxy</strong> <code>nc -zv -w 3 10.0.20.1 3306</code> ; <strong>SUR PFSENSE</strong> <em>Status → System Logs → Firewall</em></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Ajouter / déplacer la règle <em>Pass</em> sur l'interface vWEB</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>nc -zv 10.0.20.1 3306</code> → <code>succeeded</code></td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><code>Connection refused</code> (refus immédiat) ≠ <code>timed out</code> (silence). Un refus signifie que le paquet <strong>est arrivé</strong> mais que rien n'écoute : le problème est sur le serveur (service arrêté, <code>bind-address</code>), pas sur pfSense.</p>
+</blockquote>
+<h3 id="le-nat-ne-fonctionne-pas">Le NAT ne fonctionne pas</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>http://10.4.0.198:8081</code> ne répond pas depuis le réseau labo</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td><em>Block private networks</em> coché sur le WAN ; règle WAN associée absente ; HAProxy arrêté</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Tester d'abord HAProxy de l'intérieur, puis le NAT</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR adm-01</strong> <code>curl -I http://10.0.10.2</code> ; <strong>SUR PFSENSE</strong> <em>Interfaces → WAN</em> et <em>Firewall → Rules → WAN</em></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Décocher <em>Block private networks and loopback addresses</em> ; recréer la règle associée</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>curl -I http://10.4.0.198:8081</code> → <code>HTTP/1.1 200</code> ou <code>30x</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="perte-dacces-a-linterface-web">Perte d'accès à l'interface web</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>https://10.0.30.254</code> inaccessible après modification des règles</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Règle d'administration supprimée, anti-lockout désactivé</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Console Proxmox de la VM pfSense</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td>Console : option <em>8) Shell</em>, puis <code>pfctl -d</code> (désactive le filtrage <strong>temporairement</strong>)</td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Recréer la règle vADMIN → 443, puis <code>pfctl -e</code></td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Accès web rétabli avec filtrage actif</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="les-vm-naccedent-pas-aux-depots-debian">Les VM n'accèdent pas aux dépôts Debian</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>apt update</code> : <code>Temporary failure resolving 'deb.debian.org'</code></td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Règle DNS absente, NAT sortant désactivé, résolveur pfSense non configuré</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><code>cat /etc/resolv.conf</code> ; <code>ping -c 2 10.0.X0.254</code> ; <code>getent hosts deb.debian.org</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Autoriser 53 vers l'adresse pfSense du VLAN ; <code>nameserver 10.0.X0.254</code> dans la VM</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>sudo apt update</code> sans erreur</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="galera-depannage">Galera — Dépannage</h2>
+<p>Fiches détaillées et incidents réels : 09-troubleshooting/galera.md et incidents.md.</p>
+<h3 id="arbre-de-decision">Arbre de décision</h3>
+<pre><code class="language-text">check-galera.sh en échec
+│
+├── &quot;Connexion à MariaDB impossible&quot;
+│     └── systemctl status mariadb ──► inactif ? ──► journalctl -u mariadb -n 50
+│
+├── wsrep_cluster_size &lt; 3
+│     ├── nœud manquant arrêté ? ──► systemctl start mariadb (PAS de bootstrap)
+│     └── nœud en marche mais isolé ? ──► réseau / ports 4567-4568-4444 / cluster_name
+│
+├── wsrep_cluster_status = non-Primary
+│     └── perte de quorum ──► recovery.md (NE PAS redémarrer au hasard)
+│
+├── wsrep_local_state_comment ≠ Synced
+│     ├── Joiner / Donor ──► SST en cours : attendre, surveiller le journal
+│     └── bloqué ──► rsync présent ? port 4444 ouvert ? espace disque ?
+│
+└── wsrep_ready = OFF
+      └── le nœud n'accepte pas de requêtes ──► voir état et statut ci-dessus
+</code></pre>
+<h3 id="commandes-de-diagnostic">Commandes de diagnostic</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Objectif</th>
+<th>Commande (SUR LE NŒUD CONCERNÉ)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Journal</td>
+<td><code>sudo journalctl -u mariadb -n 100 --no-pager</code></td>
+</tr>
+<tr>
+<td>Fichier d'erreurs</td>
+<td><code>sudo tail -n 100 /var/log/mysql/error.log</code></td>
+</tr>
+<tr>
+<td>Ports en écoute</td>
+<td><code>sudo ss -ltnp \| grep -E '3306\|4567\|4568\|4444'</code></td>
+</tr>
+<tr>
+<td>Joindre un voisin</td>
+<td><code>nc -zv 10.0.20.2 4567</code></td>
+</tr>
+<tr>
+<td>État Galera</td>
+<td><code>sudo cat /var/lib/mysql/grastate.dat</code></td>
+</tr>
+<tr>
+<td>Membres vus</td>
+<td><code>sudo mariadb -e "SHOW STATUS LIKE 'wsrep_incoming_addresses'"</code></td>
+</tr>
+<tr>
+<td>Configuration effective</td>
+<td><code>sudo mariadb -e "SHOW VARIABLES LIKE 'wsrep_%'"</code></td>
+</tr>
+<tr>
+<td>Espace disque</td>
+<td><code>df -h /var/lib/mysql</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="messages-frequents">Messages fréquents</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Message dans le journal</th>
+<th>Cause</th>
+<th>Correction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Can't connect to MySQL server ... (111 "Connection refused")</code></td>
+<td>Service arrêté ou <code>bind-address = 127.0.0.1</code></td>
+<td>INC-02</td>
+</tr>
+<tr>
+<td><code>WSREP: failed to open gcomm backend connection: 110: failed to reach primary view</code></td>
+<td>Aucun pair joignable</td>
+<td>Démarrer un nœud du cluster d'abord ; ou bootstrap si création</td>
+</tr>
+<tr>
+<td><code>WSREP: It may not be safe to bootstrap the cluster from this node</code></td>
+<td><code>safe_to_bootstrap: 0</code></td>
+<td><a href="/procedure?id=mo-01-galera">MO-1-Cluster-Galera.md</a></td>
+</tr>
+<tr>
+<td><code>rsync: command not found</code> / <code>wsrep_sst_rsync ... failed</code></td>
+<td>rsync absent</td>
+<td>INC-04</td>
+</tr>
+<tr>
+<td><code>gcs connect failed: Connection timed out</code></td>
+<td>Port 4567 filtré</td>
+<td>Pare-feu local / VLAN</td>
+</tr>
+<tr>
+<td><code>node uses different cluster name</code> (<code>wsrep_cluster_name</code> différent)</td>
+<td>Faute de frappe</td>
+<td>Aligner <code>wsrep_cluster_name</code> sur les 3 nœuds</td>
+</tr>
+<tr>
+<td><code>Deadlock found when trying to get lock</code> (côté application)</td>
+<td>Conflit de certification multi-maître</td>
+<td>Rejouer la transaction ; envisager un écrivain unique</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="depannage-galera">Dépannage — Galera</h2>
+<p>Voir aussi : 03-galera/troubleshooting.md (arbre de décision) et <a href="/procedure?id=mo-01-galera">MO-1-Cluster-Galera.md</a>.</p>
+<h3 id="un-nud-ne-rejoint-pas-le-cluster">Un nœud ne rejoint pas le cluster</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>systemctl start mariadb</code> échoue ou reste en <code>Joining</code> ; <code>wsrep_cluster_size</code> reste à 2 sur les autres</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Ports 4567/4568/4444 bloqués ; <code>rsync</code> absent ; <code>wsrep_cluster_name</code> différent ; espace disque insuffisant pour le SST</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Lire le journal du nœud <strong>et</strong> du donneur</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR LE NŒUD</strong> <code>sudo journalctl -u mariadb -n 100 --no-pager</code> ; <code>command -v rsync</code> ; <code>df -h /var/lib/mysql</code> ; <code>nc -zv 10.0.20.1 4567</code> ; <code>grep wsrep_cluster_name /etc/mysql/mariadb.conf.d/60-galera.cnf</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Installer rsync ; ouvrir les ports (nftables) ; aligner le nom du cluster ; libérer de l'espace</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>check-galera.sh</code> : <code>cluster_size = 3</code>, <code>Synced</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="nud-bloque-en-donordesynced">Nœud bloqué en Donor/Desynced</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Un nœud <code>Donor/Desynced</code> longtemps ; requêtes lentes ou bloquées sur ce nœud</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>SST rsync en cours vers un nœud qui rejoint : le donneur est verrouillé pendant la copie</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Un autre nœud est en <code>Joiner</code> ?</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR haproxy</strong> <code>./scripts/utilities/show-cluster-status.sh -w 5</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Attendre la fin du SST. Pour éviter le blocage : <code>wsrep_sst_method = mariabackup</code> (paquet <code>mariadb-backup</code>, compte SST dédié)</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Les deux nœuds reviennent <code>Synced</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="conflits-decriture-deadlock">Conflits d'écriture (Deadlock)</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Erreurs applicatives intermittentes <code>ERROR 1213 (40001): Deadlock found when trying to get lock</code></td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Deux transactions concurrentes modifient la même ligne via deux nœuds différents : la seconde échoue à la certification</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR UN NŒUD</strong> <code>sudo mariadb -e "SHOW STATUS LIKE 'wsrep_local_cert_failures'"</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Passer HAProxy SQL en <strong>écrivain unique</strong> (variante commentée de <code>haproxy.cfg.example</code>)</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>wsrep_local_cert_failures</code> n'augmente plus</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="taille-de-cluster-incoherente-entre-nuds">Taille de cluster incohérente entre nœuds</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>bdd-01 annonce <code>cluster_size = 2</code>, bdd-03 annonce <code>1</code></td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Partition réseau ou nœud bootstrappé à tort (deux clusters distincts)</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR CHAQUE NŒUD</strong> <code>sudo mariadb -e "SHOW STATUS LIKE 'wsrep_cluster_state_uuid'"</code> — UUID différents = <strong>deux clusters</strong></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Choisir le cluster de référence (données les plus récentes), arrêter le nœud de l'autre cluster, le redémarrer normalement pour qu'il reçoive un SST. Les écritures faites sur le cluster écarté sont <strong>perdues</strong></td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Même <code>wsrep_cluster_state_uuid</code> et <code>cluster_size = 3</code> partout</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="mariadb-ne-demarre-plus-apres-modification-de-configuration">MariaDB ne démarre plus après modification de configuration</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>Job for mariadb.service failed</code></td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Faute de frappe dans un <code>.cnf</code>, option inconnue</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><code>sudo journalctl -u mariadb -n 30 --no-pager</code> ; <code>sudo mariadbd --help --verbose &gt;/dev/null</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Corriger la ligne signalée ; comparer avec <code>configs/galera/</code></td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Démarrage normal, <code>check-galera.sh</code> OK</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="haproxy-depannage">HAProxy — Dépannage</h2>
+<p>Fiches complètes : 09-troubleshooting/haproxy.md</p>
+<h3 id="reflexes">Réflexes</h3>
+<pre><code class="language-bash"># SUR haproxy
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg      # syntaxe
+sudo systemctl status haproxy --no-pager         # état du service
+sudo journalctl -u haproxy -n 50 --no-pager      # journal
+sudo ss -ltnp | grep haproxy                     # ports en écoute
+./scripts/validation/check-haproxy.sh            # synthèse + état des backends
+</code></pre>
+<h3 id="symptomes-frequents">Symptômes fréquents</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Symptôme</th>
+<th>Cause probable</th>
+<th>Vérification</th>
+<th>Correction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>503 Service Unavailable</code></td>
+<td>Tous les serveurs du backend DOWN</td>
+<td><code>check-haproxy.sh</code></td>
+<td>Réparer les backends (Apache, PHP, base)</td>
+</tr>
+<tr>
+<td>Service ne démarre pas : <code>cannot bind socket [10.0.10.2:80]</code></td>
+<td>IP absente de la VM, ou port déjà pris (Apache installé sur HAProxy ?)</td>
+<td><code>ip a</code>, <code>ss -ltnp \| grep :80</code></td>
+<td>Corriger l'IP / désinstaller le service concurrent</td>
+</tr>
+<tr>
+<td>Backend WordPress DOWN alors que le site répond en direct</td>
+<td>Health-check reçoit <code>404</code>/<code>500</code> (URI, Host)</td>
+<td><code>curl -I -H 'Host: 10.0.10.2' http://10.0.10.1/wp-login.php</code></td>
+<td>Adapter <code>http-check send</code> ou <code>expect</code></td>
+</tr>
+<tr>
+<td>Backend SQL DOWN : <code>mysql-check</code> en échec</td>
+<td>Compte <code>haproxy_check</code> absent ou mauvais hôte</td>
+<td><code>mariadb -h 10.0.20.1 -u haproxy_check -e 'SELECT 1'</code></td>
+<td><code>CREATE USER 'haproxy_check'@'10.0.10.2';</code></td>
+</tr>
+<tr>
+<td>Nœuds bloqués après trop de checks échoués</td>
+<td><code>Host '10.0.10.2' is blocked because of many connection errors</code></td>
+<td>Journal MariaDB</td>
+<td><code>sudo mariadb-admin flush-hosts</code> sur le nœud ; corriger la cause</td>
+</tr>
+<tr>
+<td>Une seule machine répond toujours</td>
+<td>Cookie de persistance dans le navigateur</td>
+<td><code>curl</code> sans cookie</td>
+<td>Comportement normal</td>
+</tr>
+<tr>
+<td><code>reload</code> sans effet</td>
+<td>Erreur de syntaxe : ancienne config conservée</td>
+<td><code>haproxy -c</code></td>
+<td>Corriger, puis <code>reload</code></td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="depannage-haproxy">Dépannage — HAProxy</h2>
+<h3 id="503-service-unavailable">503 Service Unavailable</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>curl -I http://10.0.10.2</code> → <code>HTTP/1.1 503 Service Unavailable</code></td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Tous les serveurs du backend sont DOWN (Apache arrêté, health-check en échec, base inaccessible)</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Pourquoi le health-check échoue-t-il ?</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR haproxy</strong> <code>./scripts/validation/check-haproxy.sh</code> ; <code>sudo journalctl -u haproxy -n 30 --no-pager \| grep -i down</code> ; <code>curl -sI -H 'Host: 10.0.10.2' http://10.0.10.1/wp-login.php</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Réparer le backend (service, PHP, base) ou corriger l'URI / le code attendu du health-check</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>check-wordpress.sh</code> : HAProxy UP</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="haproxy-ne-demarre-pas">HAProxy ne démarre pas</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>systemctl start haproxy</code> échoue</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Erreur de syntaxe ; IP <code>10.0.10.2</code> absente ; port déjà utilisé (Apache ou MariaDB installés sur la VM HAProxy)</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><code>sudo haproxy -c -f /etc/haproxy/haproxy.cfg</code> ; <code>ip -4 addr</code> ; <code>sudo ss -ltnp \| grep -E ':(80\|3306\|8080)\b'</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Corriger la ligne signalée ; libérer le port (<code>sudo systemctl disable --now apache2</code>)</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>systemctl is-active haproxy</code> → <code>active</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="backends-sql-down">Backends SQL DOWN</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Les 3 serveurs <code>galera_cluster</code> DOWN, alors que Galera est sain</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Compte <code>haproxy_check</code> absent ou créé pour un autre hôte ; règle pfSense HAProxy → 3306 absente ; hôte bloqué par MariaDB</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR haproxy</strong> <code>nc -zv 10.0.20.1 3306</code> ; <code>mariadb -h 10.0.20.1 -u haproxy_check -e 'SELECT 1'</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td><code>CREATE USER 'haproxy_check'@'10.0.10.2';</code> ; règle pfSense ; <strong>SUR LE NŒUD</strong> <code>sudo mariadb-admin flush-hosts</code> si <code>Host '10.0.10.2' is blocked</code></td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>check-haproxy.sh</code> : bdd-01/02/03 UP</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="un-serveur-oscille-updown-flapping">Un serveur oscille UP/DOWN (flapping)</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Journal : alternance <code>is DOWN</code> / <code>is UP</code></td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Serveur surchargé, health-check trop exigeant (<code>timeout check</code> court), réseau instable</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><code>sudo journalctl -u haproxy --since '10 min ago' \| grep -E 'UP\|DOWN'</code> ; <strong>SUR LE BACKEND</strong> <code>uptime</code>, <code>free -m</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Traiter la charge ; ajuster <code>inter</code>, <code>fall</code>, <code>timeout check</code></td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Plus d'oscillation sur 10 minutes</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="page-de-statistiques-inaccessible">Page de statistiques inaccessible</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>http://10.0.10.2:8404/stats</code> : <code>403 Forbidden</code> ou timeout</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td><code>403</code> : requête hors de vADMIN (ACL <code>from_admin</code>) ; timeout : règle pfSense absente</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR adm-01</strong> <code>curl -sI http://10.0.10.2:8404/stats</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Accéder depuis adm-01 ou Guacamole ; règle vADMIN → 8404</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>401</code> (authentification demandée) puis page affichée avec le mot de passe</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="wordpress-depannage">WordPress — Dépannage</h2>
+<p>Fiches complètes : 09-troubleshooting/wordpress.md et apache.md</p>
+<h3 id="erreur-lors-de-la-connexion-a-la-base-de-donnees">« Erreur lors de la connexion à la base de données »</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Page blanche avec ce message, sur un ou les deux serveurs</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>HAProxy SQL indisponible ; cluster non-Primary ; mauvais <code>DB_HOST</code>/<code>DB_PASSWORD</code> ; compte créé pour le mauvais hôte</td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Tester la chaîne maillon par maillon</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR web-01</strong> <code>mariadb -h 10.0.10.2 -u wordpress -p -e 'SELECT 1'</code> ; <strong>SUR haproxy</strong> <code>./scripts/validation/check-haproxy.sh</code> ; <strong>SUR bdd-01</strong> <code>./scripts/validation/check-galera.sh</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Selon le maillon défaillant</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>check-wordpress.sh</code> : HAProxy UP</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="redirection-vers-une-mauvaise-adresse">Redirection vers une mauvaise adresse</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>http://10.4.0.198:8081</code> redirige vers <code>http://10.0.10.1/</code> ou <code>http://10.0.10.2/</code> (injoignable depuis le WAN)</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td><code>siteurl</code> / <code>home</code> enregistrés lors de l'installation via une autre adresse</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR bdd-01</strong> <code>sudo mariadb -e "SELECT option_name, option_value FROM wordpress.wp_options WHERE option_name IN ('siteurl','home');"</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Définir <code>WP_HOME</code> et <code>WP_SITEURL</code> dans <code>wp-config.php</code> (sur les <strong>deux</strong> serveurs) avec l'URL utilisée par les clients</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>curl -sI http://10.4.0.198:8081 \| grep -i location</code> : pas de redirection vers une IP interne</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="images-cassees-une-fois-sur-deux">Images cassées une fois sur deux</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Un média s'affiche ou non selon le rafraîchissement</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Fichier présent sur un seul serveur (Galera ne réplique pas les fichiers)</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR web-01 et web-02</strong> <code>ls -l /var/www/wordpress/wp-content/uploads/AAAA/MM/</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Synchroniser depuis web-01 (<a href="/procedure?id=mo-03-wordpress-ha">MO-3-WordPress-HA.md</a>)</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>curl -sI</code> sur l'URL du média : <code>200</code> sur web-01 <strong>et</strong> web-02</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="deconnexion-de-wp-admin-en-boucle">Déconnexion de wp-admin en boucle</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Retour à l'écran de connexion après chaque clic</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Clés/sels différents entre web-01 et web-02 ; URL du site incohérente (cookie posé pour un autre domaine)</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR web-01 et web-02</strong> <code>sudo sha256sum /var/www/wordpress/wp-config.php</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td>Copier le <code>wp-config.php</code> de web-01 vers web-02</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Empreintes identiques ; navigation dans wp-admin stable</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="depannage-wordpress">Dépannage — WordPress</h2>
+<p>Fiches détaillées : 05-wordpress/troubleshooting.md</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Symptôme</th>
+<th>Cause probable</th>
+<th>Commande de diagnostic</th>
+<th>Correction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>« Erreur lors de la connexion à la base de données »</td>
+<td>Chaîne SQL rompue (HAProxy, Galera, identifiants)</td>
+<td><strong>SUR web-01</strong> <code>mariadb -h 10.0.10.2 -u wordpress -p -e 'SELECT 1'</code></td>
+<td>Maillon défaillant ; <code>DB_HOST</code>/<code>DB_PASSWORD</code></td>
+</tr>
+<tr>
+<td><code>Access denied for user 'wordpress'@'10.0.10.2'</code></td>
+<td>Compte créé pour <code>10.0.10.1</code>/<code>10.0.10.4</code></td>
+<td><strong>SUR bdd-01</strong> <code>SELECT user,host FROM mysql.user WHERE user='wordpress';</code></td>
+<td>Créer le compte pour <code>10.0.10.2</code></td>
+</tr>
+<tr>
+<td>Redirection vers une IP interne</td>
+<td><code>siteurl</code>/<code>home</code> incohérents</td>
+<td><strong>SUR bdd-01</strong> <code>SELECT option_value FROM wordpress.wp_options WHERE option_name IN ('siteurl','home');</code></td>
+<td><code>WP_HOME</code>/<code>WP_SITEURL</code> dans <code>wp-config.php</code></td>
+</tr>
+<tr>
+<td>Images cassées une fois sur deux</td>
+<td>Fichiers non synchronisés</td>
+<td><strong>SUR web-01 et web-02</strong> <code>ls wp-content/uploads/...</code></td>
+<td>rsync web-01 → web-02</td>
+</tr>
+<tr>
+<td>Déconnexion en boucle</td>
+<td>Clés/sels différents</td>
+<td><code>sha256sum wp-config.php</code> sur les deux</td>
+<td>Copier le fichier de web-01</td>
+</tr>
+<tr>
+<td>Page blanche</td>
+<td>Erreur PHP fatale</td>
+<td><strong>SUR web-0X</strong> <code>sudo tail -n 30 /var/log/apache2/wordpress-error.log</code></td>
+<td>Désactiver l'extension en cause (renommer son dossier)</td>
+</tr>
+<tr>
+<td>Versions différentes entre serveurs</td>
+<td>Mise à jour faite sur un seul serveur</td>
+<td><code>grep wp_version /var/www/wordpress/wp-includes/version.php</code> sur les deux</td>
+<td>Mettre à jour web-01 puis synchroniser</td>
+</tr>
+<tr>
+<td>« Briefly unavailable for scheduled maintenance »</td>
+<td>Fichier <code>.maintenance</code> restant après une mise à jour interrompue</td>
+<td><code>ls -la /var/www/wordpress/.maintenance</code></td>
+<td>Supprimer le fichier (sur les deux serveurs)</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="depannage-apache">Dépannage — Apache</h2>
+<h3 id="commandes-de-base">Commandes de base</h3>
+<pre><code class="language-bash"># SUR web-01 / web-02 / glpi
+sudo apachectl configtest                         # syntaxe
+sudo apache2ctl -S                                # vhosts actifs et vhost par défaut
+apache2ctl -M                                     # modules chargés
+sudo systemctl status apache2 --no-pager
+sudo tail -n 50 /var/log/apache2/error.log
+ls -l /etc/apache2/sites-enabled/
+</code></pre>
+<h3 id="fiches">Fiches</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Symptôme</th>
+<th>Cause probable</th>
+<th>Diagnostic</th>
+<th>Correction</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Page « Apache2 Debian Default Page »</td>
+<td><code>000-default</code> actif, vhost du projet non activé</td>
+<td><code>ls /etc/apache2/sites-enabled/</code></td>
+<td><code>a2dissite 000-default &amp;&amp; a2ensite wordpress</code> (ou <code>glpi</code>) + <code>reload</code></td>
+<td>La page de l'application s'affiche</td>
+</tr>
+<tr>
+<td><code>404</code> sur les permaliens WordPress</td>
+<td><code>mod_rewrite</code> inactif ou <code>AllowOverride None</code></td>
+<td><code>apache2ctl -M \| grep rewrite</code> ; vhost</td>
+<td><code>a2enmod rewrite</code> ; <code>AllowOverride All</code></td>
+<td><code>/sample-page/</code> s'affiche</td>
+</tr>
+<tr>
+<td><code>404</code> sur les pages GLPI</td>
+<td>Voir INC-05</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>403 Forbidden</code></td>
+<td>Droits fichiers, <code>Require all denied</code>, <code>Options -Indexes</code> sans <code>index.php</code></td>
+<td><code>namei -l /var/www/wordpress/index.php</code> ; journal d'erreurs</td>
+<td>Propriétaire <code>www-data</code>, droits 755/644 ; <code>Require all granted</code></td>
+<td><code>200</code></td>
+</tr>
+<tr>
+<td>Code PHP affiché en clair</td>
+<td>Module PHP absent</td>
+<td><code>apache2ctl -M \| grep php</code></td>
+<td><code>apt install libapache2-mod-php</code> + <code>restart</code></td>
+<td>Page exécutée</td>
+</tr>
+<tr>
+<td><code>AH00558: Could not reliably determine the server's fully qualified domain name</code></td>
+<td><code>ServerName</code> global absent (avertissement sans gravité)</td>
+<td>—</td>
+<td><code>echo 'ServerName localhost' \| sudo tee /etc/apache2/conf-available/servername.conf &amp;&amp; sudo a2enconf servername</code></td>
+<td>Avertissement disparu</td>
+</tr>
+<tr>
+<td>Journaux montrant toujours <code>10.0.10.2</code></td>
+<td><code>mod_remoteip</code> inactif</td>
+<td><code>apache2ctl -M \| grep remoteip</code></td>
+<td><code>a2enmod remoteip</code> + directives <code>RemoteIP*</code></td>
+<td>IP clients visibles</td>
+</tr>
+<tr>
+<td><code>reload</code> sans effet</td>
+<td>Erreur de syntaxe : ancienne config conservée</td>
+<td><code>apachectl configtest</code></td>
+<td>Corriger</td>
+<td><code>Syntax OK</code></td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="glpi-depannage">GLPI — Dépannage</h2>
+<h3 id="erreur-404-sur-toutes-les-pages-sauf-laccueil">Erreur 404 sur toutes les pages sauf l'accueil</h3>
+<p>Incident réel : INC-05</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>La page de connexion s'affiche, mais après authentification ou sur <code>/front/...</code> : <code>404 Not Found</code> (page Apache)</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td><code>mod_rewrite</code> inactif, <code>DocumentRoot</code> pointant sur <code>/var/www/glpi</code> au lieu de <code>/public</code>, ou règles de réécriture hors du bloc <code>&lt;Directory&gt;</code></td>
+</tr>
+<tr>
+<td><strong>Diagnostic</strong></td>
+<td>Vérifier module, vhost actif et journal d'erreurs</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR glpi</strong> <code>apache2ctl -M \| grep rewrite</code> ; <code>apache2ctl -S</code> ; <code>grep -n -A12 '&lt;Directory' /etc/apache2/sites-available/glpi.conf</code> ; <code>sudo tail -n 20 /var/log/apache2/glpi-error.log</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td><code>sudo a2enmod rewrite</code> ; vhost conforme à <code>glpi.conf.example</code> (dépôt GitHub) ; <code>sudo systemctl reload apache2</code></td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>curl -sI http://10.0.10.3/front/central.php</code> → <code>302</code> (et non <code>404</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="page-apache-par-defaut-au-lieu-de-glpi">Page Apache par défaut au lieu de GLPI</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>« Apache2 Debian Default Page »</td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Site <code>000-default</code> toujours actif ou <code>glpi.conf</code> non activé</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR glpi</strong> <code>ls -l /etc/apache2/sites-enabled/</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td><code>sudo a2dissite 000-default &amp;&amp; sudo a2ensite glpi &amp;&amp; sudo systemctl reload apache2</code></td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>check-glpi.sh</code> : « la page servie est bien GLPI »</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="erreur-de-connexion-sql">Erreur de connexion SQL</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td><code>Connection to the database failed</code></td>
+</tr>
+<tr>
+<td><strong>Cause probable</strong></td>
+<td>Compte créé pour un autre hôte que <code>10.0.10.2</code>, HAProxy SQL indisponible, cluster non-Primary</td>
+</tr>
+<tr>
+<td><strong>Commandes</strong></td>
+<td><strong>SUR glpi</strong> <code>mariadb -h 10.0.10.2 -u glpi -p -e 'SELECT 1'</code></td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td><code>CREATE USER 'glpi'@'10.0.10.2' ...</code> ; voir HAProxy / Galera</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td>Connexion SQL OK, interface GLPI fonctionnelle</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="avertissement-web-server-root-directory-configuration-is-not-safe">Avertissement « Web server root directory configuration is not safe »</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Symptôme</strong></td>
+<td>Avertissement de sécurité dans l'assistant ou la page d'accueil</td>
+</tr>
+<tr>
+<td><strong>Cause</strong></td>
+<td><code>DocumentRoot</code> sur <code>/var/www/glpi</code> : <code>config/</code> et <code>files/</code> accessibles par URL</td>
+</tr>
+<tr>
+<td><strong>Correction</strong></td>
+<td><code>DocumentRoot /var/www/glpi/public</code> + réécritures</td>
+</tr>
+<tr>
+<td><strong>Validation</strong></td>
+<td><code>curl -sI http://10.0.10.3/config/config_db.php</code> → <code>404</code></td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="depannage-ssh">Dépannage — SSH</h2>
+<p>Incidents réels : INC-06, INC-07. Bonnes pratiques : <a href="/procedure?id=mo-05-ssh-durcissement">MO-5-SSH-et-durcissement.md</a>.</p>
+<h3 id="diagnostic-universel">Diagnostic universel</h3>
+<pre><code class="language-bash"># SUR LE CLIENT (adm-01) — mode très verbeux
+ssh -vvv mysql01
+</code></pre>
+<p>Lignes utiles : <code>Connecting to</code>, <code>Server host key</code>, <code>Offering public key</code>, <code>Authentications that can continue</code>, <code>Permission denied</code>.</p>
+<pre><code class="language-bash"># SUR LE SERVEUR (console Proxmox si SSH est inaccessible)
+sudo journalctl -u ssh -n 30 --no-pager
+sudo sshd -t                                   # syntaxe de sshd_config
+</code></pre>
+<h3 id="fiches_1">Fiches</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Symptôme</th>
+<th>Cause probable</th>
+<th>Commandes</th>
+<th>Correction</th>
+<th>Validation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Permission denied (publickey)</code></td>
+<td>Clé publique absente de <code>authorized_keys</code>, clé privée copiée à la place, droits trop ouverts</td>
+<td><code>ls -la ~/.ssh</code> (serveur) ; <code>ssh -v</code> (client)</td>
+<td><code>ssh-copy-id</code> ; <code>chmod 700 ~/.ssh</code>, <code>chmod 600 ~/.ssh/authorized_keys</code></td>
+<td>Connexion par clé</td>
+</tr>
+<tr>
+<td><code>REMOTE HOST IDENTIFICATION HAS CHANGED</code></td>
+<td>VM réinstallée, IP réattribuée… ou attaque</td>
+<td><code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub</code> (console VM)</td>
+<td><strong>Après vérification</strong> : <code>ssh-keygen -R &lt;ip&gt;</code></td>
+<td>Connexion, nouvelle empreinte acceptée</td>
+</tr>
+<tr>
+<td><code>Connection timed out</code></td>
+<td>Règle pfSense absente (source hors vADMIN), VM éteinte</td>
+<td><code>nc -zv -w 3 &lt;ip&gt; 22</code> ; journal pfSense</td>
+<td>Règle vADMIN → 22</td>
+<td><code>nc</code> : succeeded</td>
+</tr>
+<tr>
+<td><code>Connection refused</code></td>
+<td><code>sshd</code> arrêté ou non installé</td>
+<td><code>systemctl status ssh</code> (console)</td>
+<td><code>sudo apt install openssh-server</code> ; <code>systemctl enable --now ssh</code></td>
+<td>Port 22 en écoute</td>
+</tr>
+<tr>
+<td><code>UNPROTECTED PRIVATE KEY FILE!</code></td>
+<td>Clé privée lisible par d'autres (fréquent sous Windows)</td>
+<td><code>ls -l ~/.ssh/id_ed25519</code></td>
+<td><code>chmod 600 ~/.ssh/id_ed25519</code> (Windows : propriétés → sécurité, propriétaire seul)</td>
+<td>Clé acceptée</td>
+</tr>
+<tr>
+<td><code>Too many authentication failures</code></td>
+<td>L'agent propose trop de clés</td>
+<td><code>ssh-add -l</code></td>
+<td><code>IdentitiesOnly yes</code> + <code>IdentityFile</code> dans <code>~/.ssh/config</code></td>
+<td>Connexion</td>
+</tr>
+<tr>
+<td>Coupé de SSH après durcissement</td>
+<td><code>PasswordAuthentication no</code> avant d'avoir installé la clé</td>
+<td>Console Proxmox</td>
+<td>Réactiver temporairement, installer la clé, re-durcir</td>
+<td>Connexion par clé</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="depannage-apt-dpkg">Dépannage — APT / dpkg</h2>
+<p>Incident réel : INC-03</p>
+<h3 id="dpkg-interrompu">dpkg interrompu</h3>
+<pre><code class="language-text">E: dpkg was interrupted, you must manually run 'sudo dpkg --configure -a' to correct the problem.
+</code></pre>
+<pre><code class="language-bash"># SUR LA VM CONCERNÉE
+sudo dpkg --configure -a
+sudo apt --fix-broken install -y
+sudo apt update
+</code></pre>
+<h3 id="verrou-apt-occupe">Verrou APT occupé</h3>
+<pre><code class="language-text">E: Could not get lock /var/lib/dpkg/lock-frontend. It is held by process 1234 (apt)
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Étape</th>
+<th>Commande</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Identifier le processus</td>
+<td><code>ps -fp 1234</code></td>
+</tr>
+<tr>
+<td>S'il s'agit d'une installation légitime (unattended-upgrades)</td>
+<td><strong>Attendre</strong> sa fin</td>
+</tr>
+<tr>
+<td>S'il est figé depuis longtemps</td>
+<td><code>sudo kill 1234</code>, puis <code>sudo dpkg --configure -a</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Ne <strong>jamais</strong> supprimer les fichiers de verrou à la main pendant qu'un processus APT tourne : risque de corruption de la base dpkg.</p>
+<h3 id="dependances-cassees">Dépendances cassées</h3>
+<pre><code class="language-text">The following packages have unmet dependencies: ...
+</code></pre>
+<pre><code class="language-bash">sudo apt --fix-broken install
+sudo apt update &amp;&amp; sudo apt full-upgrade
+apt-cache policy &lt;paquet&gt;       # versions disponibles et dépôt d'origine
+</code></pre>
+<h3 id="resolution-dns-impossible">Résolution DNS impossible</h3>
+<pre><code class="language-text">Temporary failure resolving 'deb.debian.org'
+</code></pre>
+<pre><code class="language-bash">cat /etc/resolv.conf            # nameserver = passerelle pfSense du VLAN ?
+ping -c 2 10.0.X0.254
+getent hosts deb.debian.org
+</code></pre>
+<p>Correction : règle pfSense DNS (53) et NAT sortant — voir 02-pfsense/troubleshooting.md.</p>
+<h3 id="signatures-depots">Signatures / dépôts</h3>
+<pre><code class="language-text">The following signatures couldn't be verified because the public key is not available
+</code></pre>
+<p>Cause habituelle : dépôt tiers ajouté sans sa clé. Dans ce projet, <strong>seuls les dépôts Debian officiels</strong> sont utilisés (MariaDB, Galera, HAProxy, Apache, PHP) : supprimer tout dépôt tiers non nécessaire dans <code>/etc/apt/sources.list.d/</code>.</p>
+<h3 id="prevention">Prévention</h3>
+<ul>
+<li>Lancer les installations longues dans <code>tmux</code> (<code>sudo apt install tmux</code>).</li>
+<li>Snapshot Proxmox avant une mise à jour majeure.</li>
+<li><code>sudo apt update</code> avant chaque <code>apt install</code>.</li>
+</ul>

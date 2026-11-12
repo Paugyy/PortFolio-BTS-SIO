@@ -1,0 +1,648 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 10/10/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Apache, WordPress, base de données, synchronisation des fichiers et bascule.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+<p>⚠️ <strong>Écarts avec le labo réel</strong> (configuration relevée le 01/10/2026, voir le DAT §7.2) :
+HAProxy contrôle ses serveurs <strong>toutes les 2 s</strong> (<code>inter 2s fall 3 rise 2</code>), le contrôle SQL est un simple
+test de port (<code>tcp-check</code>, pas <code>mysql-check</code>), et il n'y a <strong>ni page de statistiques (8404) ni en-tête
+<code>X-Served-By</code></strong> : les passages qui les citent décrivent une cible, pas l'existant. adm-01 est le contrôleur
+de domaine Windows : les commandes notées « sur adm-01 » se jouent depuis une session du bastion Guacamole.</p>
+</blockquote>
+<hr />
+<h2 id="wordpress-apache">WordPress — Apache</h2>
+<p>Configuration identique sur <strong>web-01</strong> et <strong>web-02</strong> : <code>configs/apache/wordpress.conf.example</code> (dépôt GitHub)</p>
+<h3 id="modules">Modules</h3>
+<p><strong>SUR web-01 et web-02</strong></p>
+<pre><code class="language-bash">sudo a2enmod rewrite remoteip
+sudo systemctl restart apache2
+apache2ctl -M | grep -E 'rewrite|remoteip|php'
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Pourquoi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rewrite</code></td>
+<td>Permaliens WordPress (<code>.htaccess</code>)</td>
+</tr>
+<tr>
+<td><code>remoteip</code></td>
+<td>Journaliser l'IP réelle du client au lieu de celle de HAProxy</td>
+</tr>
+<tr>
+<td><code>php8.2</code></td>
+<td>Exécution de WordPress (installé par <code>libapache2-mod-php</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="points-cles-du-vhost">Points clés du vhost</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Directive</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DocumentRoot /var/www/wordpress</code></td>
+<td>Racine du site</td>
+</tr>
+<tr>
+<td><code>AllowOverride All</code></td>
+<td>Autorise le <code>.htaccess</code> de WordPress</td>
+</tr>
+<tr>
+<td><code>&lt;FilesMatch "^(wp-config\.php\|readme\.html\|license\.txt)$"&gt; Require all denied</code></td>
+<td>Interdit l'accès direct aux fichiers sensibles ou révélant la version</td>
+</tr>
+<tr>
+<td><code>RemoteIPHeader X-Forwarded-For</code></td>
+<td>Lit l'IP client transmise par HAProxy</td>
+</tr>
+<tr>
+<td><code>RemoteIPInternalProxy 10.0.10.2</code></td>
+<td><strong>Seul</strong> HAProxy est autorisé à fournir cet en-tête (sinon n'importe quel client pourrait usurper son IP)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="ip-reelle-des-clients-dans-les-journaux">IP réelle des clients dans les journaux</h3>
+<p>Sans <code>mod_remoteip</code>, chaque ligne de <code>/var/log/apache2/wordpress-access.log</code> montre <code>10.0.10.2</code> (HAProxy). Avec :</p>
+<pre><code class="language-bash"># SUR web-01
+sudo tail -n 3 /var/log/apache2/wordpress-access.log
+# 10.0.40.105 - - [..] &quot;GET / HTTP/1.1&quot; 200 ...   ← IP du poste utilisateur
+# 10.0.10.2   - - [..] &quot;GET /wp-login.php ...&quot;   ← health-checks HAProxy
+</code></pre>
+<h3 id="permissions">Permissions</h3>
+<p><strong>SUR web-01 et web-02</strong></p>
+<pre><code class="language-bash">sudo chown -R www-data:www-data /var/www/wordpress
+sudo find /var/www/wordpress -type d -exec chmod 755 {} \;
+sudo find /var/www/wordpress -type f -exec chmod 644 {} \;
+sudo chown root:www-data /var/www/wordpress/wp-config.php
+sudo chmod 640 /var/www/wordpress/wp-config.php
+</code></pre>
+<h3 id="verification">Vérification</h3>
+<pre><code class="language-bash">sudo apachectl configtest      # Syntax OK
+sudo apache2ctl -S             # vhosts actifs : wordpress.conf sur *:80
+</code></pre>
+<hr />
+<h2 id="wordpress-installation">WordPress — Installation</h2>
+<h3 id="principe">Principe</h3>
+<pre><code class="language-text">            ┌───────── fichiers (code, thèmes, médias) ─────────┐
+            │                                                   │
+      web-01 /var/www/wordpress  ── rsync ──►  web-02 /var/www/wordpress
+            │                                                   │
+            └──────── SQL ──► HAProxy 10.0.10.2:3306 ◄── SQL ───┘
+                                     │
+                         Galera (base « wordpress » unique)
+</code></pre>
+<ul>
+<li><strong>Une seule base</strong> <code>wordpress</code>, répliquée par Galera.</li>
+<li><strong>Deux copies des fichiers</strong>, synchronisées de web-01 vers web-02.</li>
+<li><strong>Un seul <code>wp-config.php</code></strong>, identique sur les deux serveurs.</li>
+</ul>
+<h3 id="1-base-et-compte-sql">1. Base et compte SQL</h3>
+<p><strong>SUR bdd-01</strong> (répliqué automatiquement)</p>
+<pre><code class="language-sql">-- sudo mariadb
+CREATE DATABASE wordpress CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'wordpress'@'10.0.10.2' IDENTIFIED BY '&lt;PASSWORD&gt;';
+GRANT ALL PRIVILEGES ON wordpress.* TO 'wordpress'@'10.0.10.2';
+</code></pre>
+<p>L'hôte est <code>10.0.10.2</code> car <strong>toutes</strong> les connexions arrivent par HAProxy. Détail : database.md.</p>
+<p><strong>SUR web-01</strong> — test de connexion via HAProxy :</p>
+<pre><code class="language-bash">mariadb -h 10.0.10.2 -P 3306 -u wordpress -p -e 'SELECT @@hostname, DATABASE();'
+</code></pre>
+<h3 id="2-fichiers-wordpress">2. Fichiers WordPress</h3>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">sudo ./scripts/install/install-wordpress-deps.sh --apply --download
+ls /var/www/wordpress    # wp-admin  wp-content  wp-includes  ...
+</code></pre>
+<h3 id="3-wp-configphp">3. wp-config.php</h3>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">sudo cp configs/wordpress/wp-config.php.example /var/www/wordpress/wp-config.php
+sudo nano /var/www/wordpress/wp-config.php
+</code></pre>
+<ul>
+<li>Remplacer <code>DB_PASSWORD</code> <code>&lt;SECRET&gt;</code> par le mot de passe du compte <code>wordpress</code>.</li>
+<li>Remplacer les 8 clés/sels <code>&lt;SECRET&gt;</code> par des valeurs générées sur <code>https://api.wordpress.org/secret-key/1.1/salt/</code>.</li>
+<li>Vérifier <code>DB_HOST = 10.0.10.2:3306</code>.</li>
+</ul>
+<pre><code class="language-bash">sudo chown root:www-data /var/www/wordpress/wp-config.php
+sudo chmod 640 /var/www/wordpress/wp-config.php
+php -l /var/www/wordpress/wp-config.php
+</code></pre>
+<p>Choix de configuration notables :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Constante</th>
+<th>Valeur</th>
+<th>Raison</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DB_HOST</code></td>
+<td><code>10.0.10.2:3306</code></td>
+<td>Passer par HAProxy, jamais par un nœud</td>
+</tr>
+<tr>
+<td>Clés et sels</td>
+<td>Identiques sur les 2 serveurs</td>
+<td>Une session ouverte sur web-01 reste valide sur web-02</td>
+</tr>
+<tr>
+<td><code>DISALLOW_FILE_EDIT</code></td>
+<td><code>true</code></td>
+<td>Une modification via l'éditeur web n'affecterait qu'un serveur</td>
+</tr>
+<tr>
+<td><code>AUTOMATIC_UPDATER_DISABLED</code></td>
+<td><code>true</code></td>
+<td>Une mise à jour automatique ne se ferait que sur un serveur → divergence de versions</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="4-assistant-dinstallation">4. Assistant d'installation</h3>
+<p><strong>SUR adm-01</strong> (navigateur) : <code>http://10.0.10.1/</code> (directement web-01, pour l'installation uniquement)</p>
+<ul>
+<li>Titre, compte administrateur WordPress (<code>&lt;ADMIN_USER&gt;</code> / <code>&lt;PASSWORD&gt;</code> — pas <code>admin</code>).</li>
+<li>Après installation, régler <em>Réglages → Général</em> : <strong>Adresse web de WordPress</strong> et <strong>Adresse web du site</strong> = l'URL par laquelle les visiteurs arrivent (ex. <code>http://10.0.10.2</code>).</li>
+</ul>
+<h3 id="5-copie-vers-web-02">5. Copie vers web-02</h3>
+<p>Voir web02.md puis synchronization.md.</p>
+<h3 id="6-verification">6. Vérification</h3>
+<pre><code class="language-bash"># SUR adm-01
+./scripts/validation/check-wordpress.sh
+</code></pre>
+<p>Attendu : web-01 UP, web-02 UP, HAProxy UP avec alternance de <code>X-Served-By</code>.</p>
+<hr />
+<h2 id="wordpress-base-de-donnees">WordPress — Base de données</h2>
+<h3 id="parametres">Paramètres</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base</td>
+<td><code>wordpress</code> (utf8mb4)</td>
+</tr>
+<tr>
+<td>Compte</td>
+<td><code>wordpress</code>@<code>10.0.10.2</code></td>
+</tr>
+<tr>
+<td>Privilèges</td>
+<td><code>ALL PRIVILEGES ON wordpress.*</code> (WordPress crée et modifie ses tables lors des mises à jour)</td>
+</tr>
+<tr>
+<td>Point d'accès</td>
+<td><code>10.0.10.2:3306</code> (HAProxy)</td>
+</tr>
+<tr>
+<td>Moteur</td>
+<td>InnoDB (obligatoire pour Galera ; défaut de WordPress)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="creation">Création</h3>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-sql">-- sudo mariadb
+CREATE DATABASE wordpress CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'wordpress'@'10.0.10.2' IDENTIFIED BY '&lt;PASSWORD&gt;';
+GRANT ALL PRIVILEGES ON wordpress.* TO 'wordpress'@'10.0.10.2';
+SHOW GRANTS FOR 'wordpress'@'10.0.10.2';
+</code></pre>
+<p>Les comptes et privilèges (tables système InnoDB depuis MariaDB 10.4) sont répliqués : inutile de recréer le compte sur bdd-02 et bdd-03.</p>
+<h3 id="pourquoi-100102">Pourquoi <code>@'10.0.10.2'</code> ?</h3>
+<p>Un compte MariaDB est défini par <strong>nom + hôte d'origine</strong>. Les serveurs web ne se connectent pas directement aux nœuds : ils passent par HAProxy, qui ouvre lui-même la connexion vers le nœud. MariaDB voit donc l'IP <strong>10.0.10.2</strong>.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Compte créé</th>
+<th>Connexion depuis web-01 via HAProxy</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>'wordpress'@'10.0.10.1'</code></td>
+<td><strong>Refusée</strong> (<code>Access denied for user 'wordpress'@'10.0.10.2'</code>)</td>
+</tr>
+<tr>
+<td><code>'wordpress'@'10.0.10.2'</code></td>
+<td>Acceptée</td>
+</tr>
+<tr>
+<td><code>'wordpress'@'%'</code></td>
+<td>Acceptée, mais <strong>trop large</strong> (moindre privilège non respecté)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="verifications">Vérifications</h3>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">mariadb -h 10.0.10.2 -u wordpress -p -e 'SHOW TABLES FROM wordpress;' | head
+</code></pre>
+<p><strong>SUR bdd-02</strong></p>
+<pre><code class="language-sql">-- Toutes les tables WordPress doivent être en InnoDB
+SELECT table_name, engine FROM information_schema.tables
+WHERE table_schema = 'wordpress' AND engine &lt;&gt; 'InnoDB';
+-- attendu : aucune ligne
+
+-- Tables sans clé primaire (à éviter avec Galera)
+SELECT t.table_name FROM information_schema.tables t
+LEFT JOIN information_schema.table_constraints c
+  ON c.table_schema = t.table_schema AND c.table_name = t.table_name AND c.constraint_type = 'PRIMARY KEY'
+WHERE t.table_schema = 'wordpress' AND c.constraint_name IS NULL;
+-- attendu : aucune ligne
+</code></pre>
+<h3 id="extensions-et-galera">Extensions et Galera</h3>
+<p>Certaines extensions créent des tables <strong>MyISAM</strong> ou <strong>sans clé primaire</strong>. Avant d'installer une extension, vérifier ses tables avec les requêtes ci-dessus. Une table MyISAM n'est <strong>pas</strong> répliquée de manière fiable par Galera.</p>
+<p>Sauvegarde : <a href="/procedure?id=mo-06-sauvegarde">MO-6-Sauvegarde-restauration.md</a></p>
+<hr />
+<h2 id="web-01-100101">web-01 — 10.0.10.1</h2>
+<p>Premier serveur WordPress, <strong>serveur de référence</strong> pour les fichiers.</p>
+<h3 id="fiche">Fiche</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nom de VM</td>
+<td>web-01</td>
+</tr>
+<tr>
+<td>IP / masque</td>
+<td>10.0.10.1/24</td>
+</tr>
+<tr>
+<td>Passerelle</td>
+<td>10.0.10.254</td>
+</tr>
+<tr>
+<td>VLAN</td>
+<td>301 — vWEB</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Debian 12</td>
+</tr>
+<tr>
+<td>Logiciels</td>
+<td>Apache 2.4, PHP 8.2, WordPress 6.x</td>
+</tr>
+<tr>
+<td>Racine web</td>
+<td><code>/var/www/wordpress</code></td>
+</tr>
+<tr>
+<td>vhost</td>
+<td><code>wordpress.conf.example</code> (dépôt GitHub)</td>
+</tr>
+<tr>
+<td>Configuration WordPress</td>
+<td><code>wp-config.php.example</code> (dépôt GitHub) (identique sur web-01 et web-02)</td>
+</tr>
+<tr>
+<td>Base de données</td>
+<td><code>wordpress</code> via <code>10.0.10.2:3306</code> (HAProxy)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="deploiement">Déploiement</h3>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash"># Dépendances (simulation, puis exécution)
+sudo ./scripts/install/install-wordpress-deps.sh
+sudo ./scripts/install/install-wordpress-deps.sh --apply
+sudo ./scripts/install/install-wordpress-deps.sh --apply --download   # télécharge WordPress (SHA-1 vérifié)
+
+# vhost Apache
+sudo cp configs/apache/wordpress.conf.example /etc/apache2/sites-available/wordpress.conf
+sudo a2ensite wordpress
+sudo a2dissite 000-default
+sudo apachectl configtest
+sudo systemctl reload apache2
+</code></pre>
+<h3 id="role-de-reference">Rôle de référence</h3>
+<p>web-01 est le <strong>serveur de référence des fichiers</strong> :</p>
+<ul>
+<li>l'installation WordPress (assistant web) est faite <strong>une seule fois</strong>, sur web-01 ;</li>
+<li>les extensions, thèmes, mises à jour et téléversements de médias sont effectués sur web-01 ;</li>
+<li>les fichiers sont ensuite copiés vers web-02 (synchronization.md).</li>
+</ul>
+<p>L'installation est détaillée dans wordpress.md.</p>
+<h3 id="verification_1">Vérification</h3>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">systemctl is-active apache2
+curl -sI http://localhost/wp-login.php | head -n 1
+php -m | grep -E 'mysqli|curl|gd|mbstring|xml|zip|intl'
+</code></pre>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">curl -sI http://10.0.10.1/ | head -n 1        # test T11
+</code></pre>
+<p>Capture attendue : <code>evidence/screenshots/06-wordpress-web01.png</code></p>
+<hr />
+<h2 id="web-02-100104">web-02 — 10.0.10.4</h2>
+<p>Second serveur WordPress. Sert le même site que web-01, à partir d'une copie de ses fichiers.</p>
+<h3 id="fiche_1">Fiche</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nom de VM</td>
+<td>web-02</td>
+</tr>
+<tr>
+<td>IP / masque</td>
+<td>10.0.10.4/24</td>
+</tr>
+<tr>
+<td>Passerelle</td>
+<td>10.0.10.254</td>
+</tr>
+<tr>
+<td>VLAN</td>
+<td>301 — vWEB</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Debian 12</td>
+</tr>
+<tr>
+<td>Logiciels</td>
+<td>Apache 2.4, PHP 8.2, WordPress 6.x</td>
+</tr>
+<tr>
+<td>Racine web</td>
+<td><code>/var/www/wordpress</code></td>
+</tr>
+<tr>
+<td>vhost</td>
+<td><code>wordpress.conf.example</code> (dépôt GitHub)</td>
+</tr>
+<tr>
+<td>Configuration WordPress</td>
+<td><code>wp-config.php.example</code> (dépôt GitHub) (identique sur web-01 et web-02)</td>
+</tr>
+<tr>
+<td>Base de données</td>
+<td><code>wordpress</code> via <code>10.0.10.2:3306</code> (HAProxy)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="deploiement_1">Déploiement</h3>
+<p><strong>SUR web-02</strong></p>
+<pre><code class="language-bash"># Dépendances (simulation, puis exécution)
+sudo ./scripts/install/install-wordpress-deps.sh
+sudo ./scripts/install/install-wordpress-deps.sh --apply
+
+# vhost Apache
+sudo cp configs/apache/wordpress.conf.example /etc/apache2/sites-available/wordpress.conf
+sudo a2ensite wordpress
+sudo a2dissite 000-default
+sudo apachectl configtest
+sudo systemctl reload apache2
+</code></pre>
+<h3 id="pas-de-nouvelle-installation">Pas de nouvelle installation</h3>
+<p>web-02 <strong>ne passe pas</strong> par l'assistant d'installation WordPress : la base <code>wordpress</code> existe déjà (créée lors de l'installation sur web-01) et est partagée via Galera. web-02 reçoit seulement <strong>une copie des fichiers</strong> de web-01, y compris <code>wp-config.php</code>.</p>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">sudo rsync -aAX --delete /var/www/wordpress/ &lt;ADMIN_USER&gt;@10.0.10.4:/tmp/wordpress-sync/
+</code></pre>
+<p><strong>SUR web-02</strong></p>
+<pre><code class="language-bash">sudo rsync -a --delete /tmp/wordpress-sync/ /var/www/wordpress/
+sudo chown -R www-data:www-data /var/www/wordpress
+sudo chown root:www-data /var/www/wordpress/wp-config.php
+sudo chmod 640 /var/www/wordpress/wp-config.php
+</code></pre>
+<blockquote>
+<p>Si <code>rsync</code> répond <code>command not found</code>, il manque sur <strong>l'une des deux</strong> machines : rsync doit être installé aux deux extrémités (<a href="/procedure?id=depannage">INC-04</a>).</p>
+</blockquote>
+<p>Procédure de synchronisation récurrente : synchronization.md</p>
+<h3 id="verification_2">Vérification</h3>
+<p><strong>SUR web-02</strong></p>
+<pre><code class="language-bash">systemctl is-active apache2
+curl -sI http://localhost/wp-login.php | head -n 1
+php -m | grep -E 'mysqli|curl|gd|mbstring|xml|zip|intl'
+</code></pre>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">curl -sI http://10.0.10.4/ | head -n 1        # test T12
+</code></pre>
+<p>Capture attendue : <code>evidence/screenshots/07-wordpress-web02.png</code></p>
+<hr />
+<h2 id="wordpress-synchronisation-des-fichiers">WordPress — Synchronisation des fichiers</h2>
+<h3 id="le-probleme">Le problème</h3>
+<p><strong>Galera synchronise la base de données, pas les fichiers.</strong></p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Donnée</th>
+<th>Stockage</th>
+<th>Synchronisée par</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Articles, pages, utilisateurs, réglages, liste des médias</td>
+<td>Base <code>wordpress</code></td>
+<td>Galera (automatique)</td>
+</tr>
+<tr>
+<td>Images téléversées (<code>wp-content/uploads</code>)</td>
+<td>Disque de chaque serveur</td>
+<td><strong>Rien</strong> par défaut</td>
+</tr>
+<tr>
+<td>Thèmes, extensions (<code>wp-content/themes</code>, <code>plugins</code>)</td>
+<td>Disque de chaque serveur</td>
+<td><strong>Rien</strong> par défaut</td>
+</tr>
+<tr>
+<td>Cœur WordPress, <code>wp-config.php</code></td>
+<td>Disque de chaque serveur</td>
+<td><strong>Rien</strong> par défaut</td>
+</tr>
+</tbody>
+</table></div>
+<p>Conséquence : une image téléversée via web-01 est référencée en base (donc visible dans la médiathèque des deux serveurs) mais le <strong>fichier</strong> n'existe que sur web-01. Un visiteur servi par web-02 obtient une image cassée (404), une fois sur deux.</p>
+<h3 id="solution-retenue-v100-web-01-reference-rsync">Solution retenue (v1.0.0) : web-01 référence + rsync</h3>
+<ol>
+<li><strong>Toute modification de fichiers</strong> (médias, thèmes, extensions, mises à jour) se fait sur <strong>web-01</strong>.</li>
+<li>Les fichiers sont copiés de web-01 vers web-02 avec <code>rsync</code> (via SSH).</li>
+</ol>
+<h4 id="prerequis">Prérequis</h4>
+<ul>
+<li><code>rsync</code> installé sur <strong>web-01 et web-02</strong> (le binaire distant est appelé par SSH).</li>
+<li>Accès SSH par clé de web-01 vers web-02 (flux F11, même VLAN).</li>
+</ul>
+<h4 id="synchronisation-manuelle">Synchronisation manuelle</h4>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash"># Simulation d'abord (-n) : liste ce qui serait copié ou supprimé
+sudo rsync -aAXn --delete --exclude 'wp-content/cache/' \
+     /var/www/wordpress/ &lt;ADMIN_USER&gt;@10.0.10.4:/var/www/wordpress/ \
+     --rsync-path=&quot;sudo rsync&quot;
+
+# Puis exécution réelle
+sudo rsync -aAX --delete --exclude 'wp-content/cache/' \
+     /var/www/wordpress/ &lt;ADMIN_USER&gt;@10.0.10.4:/var/www/wordpress/ \
+     --rsync-path=&quot;sudo rsync&quot;
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>-a</code></td>
+<td>Archive : récursif, conserve droits, propriétaires, dates</td>
+</tr>
+<tr>
+<td><code>-A -X</code></td>
+<td>Conserve ACL et attributs étendus</td>
+</tr>
+<tr>
+<td><code>--delete</code></td>
+<td>Supprime sur web-02 ce qui n'existe plus sur web-01 (<strong>d'où la simulation <code>-n</code> préalable</strong>)</td>
+</tr>
+<tr>
+<td><code>--rsync-path="sudo rsync"</code></td>
+<td>Écriture en root côté web-02 (nécessite une règle sudo adaptée)</td>
+</tr>
+<tr>
+<td>Barre oblique finale sur la source</td>
+<td>Copie le <strong>contenu</strong> du dossier, pas le dossier lui-même</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="synchronisation-planifiee-exemple">Synchronisation planifiée (exemple)</h4>
+<pre><code class="language-bash"># SUR web-01 — /etc/cron.d/wordpress-sync (toutes les 5 minutes)
+*/5 * * * * root rsync -aAX --delete --exclude 'wp-content/cache/' /var/www/wordpress/ syncuser@10.0.10.4:/var/www/wordpress/ --rsync-path=&quot;sudo rsync&quot; &gt;&gt; /var/log/wordpress-sync.log 2&gt;&amp;1
+</code></pre>
+<p>Statut : <strong>exemple</strong>, à mettre en place et à tester avant d'être déclaré réel.</p>
+<h3 id="limites">Limites</h3>
+<ul>
+<li>Un média téléversé via web-02 (si l'administrateur est servi par web-02) serait <strong>supprimé</strong> à la synchronisation suivante par <code>--delete</code>. D'où la persistance de session HAProxy et la règle « administration via web-01 ».</li>
+<li>Délai de synchronisation : un média est absent de web-02 jusqu'au prochain passage.</li>
+<li>Si web-01 tombe, les téléversements doivent attendre son retour (ou une bascule manuelle du rôle de référence).</li>
+</ul>
+<h3 id="ameliorations-roadmap">Améliorations (roadmap)</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Solution</th>
+<th>Principe</th>
+<th>Avantage</th>
+<th>Inconvénient</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>NFS</strong></td>
+<td><code>wp-content/uploads</code> monté depuis un serveur NFS</td>
+<td>Simple</td>
+<td>Le serveur NFS devient un SPOF</td>
+</tr>
+<tr>
+<td><strong>GlusterFS</strong></td>
+<td>Volume répliqué sur web-01 et web-02</td>
+<td>Pas de SPOF</td>
+<td>Plus complexe, sensible au réseau</td>
+</tr>
+<tr>
+<td><strong>lsyncd</strong></td>
+<td>rsync déclenché par inotify, quasi temps réel</td>
+<td>Léger</td>
+<td>Toujours unidirectionnel</td>
+</tr>
+<tr>
+<td><strong>Stockage objet (S3/MinIO)</strong></td>
+<td>Extension WordPress d'offload des médias</td>
+<td>Évolutif</td>
+<td>Dépendance supplémentaire</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="wordpress-failover">WordPress — Failover</h2>
+<h3 id="comportement-attendu">Comportement attendu</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Événement</th>
+<th>Détection</th>
+<th>Effet client</th>
+<th>Retour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Apache arrêté sur web-01</td>
+<td>Health-check KO ×3 (~9 s)</td>
+<td>Aucun : requêtes rejouées sur web-02 (<code>redispatch</code>)</td>
+<td><code>rise 2</code> (~6 s) après redémarrage</td>
+</tr>
+<tr>
+<td>VM web-02 éteinte</td>
+<td>Health-check KO ×3 (~9 s)</td>
+<td>Aucun : tout est servi par web-01</td>
+<td>Idem</td>
+</tr>
+<tr>
+<td>PHP cassé sur web-01 (erreur 500)</td>
+<td><code>/wp-login.php</code> renvoie 500 → KO</td>
+<td>Aucun après détection</td>
+<td>Idem</td>
+</tr>
+<tr>
+<td>Base inaccessible depuis web-01</td>
+<td><code>/wp-login.php</code> en erreur → KO</td>
+<td>Dépend : si la base est inaccessible pour les deux, le site est en erreur</td>
+<td>—</td>
+</tr>
+<tr>
+<td>web-01 <strong>et</strong> web-02 arrêtés</td>
+<td>Les deux DOWN</td>
+<td><code>503 Service Unavailable</code></td>
+<td>Dès qu'un serveur revient</td>
+</tr>
+</tbody>
+</table></div>
+<p align="center"><img src="/assets/img/ha/failover-web.svg" alt="Failover web" width="750"></p>
+
+<h3 id="demonstration-rapide">Démonstration rapide</h3>
+<p><strong>SUR adm-01</strong> (terminal 1 — observation continue)</p>
+<pre><code class="language-bash">while true; do curl -s -o /dev/null -D - http://10.0.10.2 | grep -Ei '^HTTP/|x-served-by' | tr '\r\n' '  '; echo; sleep 1; done
+</code></pre>
+<p><strong>SUR web-01</strong> (terminal 2)</p>
+<pre><code class="language-bash">sudo systemctl stop apache2
+# observer : seules des réponses &quot;X-Served-By: web-02&quot;
+sudo systemctl start apache2
+# observer : l'alternance web-01 / web-02 reprend
+</code></pre>
+<h3 id="procedure-de-test-formelle">Procédure de test formelle</h3>
+<p>Procédure complète, dans les deux sens, avec critères de réussite : <a href="/procedure?id=plan-de-tests">Plan-de-tests.md</a></p>
+<p>Version scriptée :</p>
+<pre><code class="language-bash"># SUR adm-01
+./scripts/failover/test-web01-failure.sh --save
+./scripts/failover/test-web02-failure.sh --save
+</code></pre>

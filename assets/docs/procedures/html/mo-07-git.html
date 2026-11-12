@@ -1,0 +1,119 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 10/10/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Flux de travail Git et organisation du dépôt.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+</blockquote>
+<hr />
+<h2 id="workflow-git">Workflow Git</h2>
+<h3 id="initialisation-du-depot">Initialisation du dépôt</h3>
+<pre><code class="language-bash"># SUR LE POSTE DE DÉVELOPPEMENT
+cd bts-sio-ha-infrastructure
+git init
+git add .
+# Sous Windows : enregistrer le bit exécutable des scripts (sinon la CI échoue)
+git update-index --chmod=+x scripts/install/*.sh scripts/validation/*.sh scripts/failover/*.sh scripts/backup/*.sh scripts/utilities/*.sh
+git commit -m &quot;chore(repo): initialize BTS SIO HA infrastructure&quot;
+git branch -M main
+git remote add origin https://github.com/&lt;GITHUB_USER&gt;/bts-sio-ha-infrastructure.git
+git push -u origin main
+
+# Branche d'intégration
+git switch -c develop
+git push -u origin develop
+</code></pre>
+<h3 id="configuration-github-apres-le-premier-push">Configuration GitHub après le premier push</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Réglage</th>
+<th>Où</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Description</td>
+<td><em>About</em> (roue dentée)</td>
+<td>Voir ci-dessous</td>
+</tr>
+<tr>
+<td>Topics</td>
+<td><em>About</em></td>
+<td>Voir ci-dessous</td>
+</tr>
+<tr>
+<td>Protection de <code>main</code></td>
+<td><em>Settings → Branches</em> (ou <em>Rules</em>)</td>
+<td>PR obligatoire, CI verte requise</td>
+</tr>
+<tr>
+<td>Secret scanning + Push protection</td>
+<td><em>Settings → Code security</em></td>
+<td>Activés</td>
+</tr>
+<tr>
+<td>Signalement privé de vulnérabilité</td>
+<td><em>Settings → Code security</em></td>
+<td>Activé</td>
+</tr>
+<tr>
+<td>GitHub Pages (optionnel)</td>
+<td><em>Settings → Pages</em></td>
+<td><code>main</code> / <code>(root)</code></td>
+</tr>
+<tr>
+<td>Labels</td>
+<td><em>Issues → Labels</em></td>
+<td><code>labels.md</code> (dépôt GitHub)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Description</strong> (&lt; 350 caractères) :</p>
+<pre><code class="language-text">Infrastructure haute disponibilité réalisée en BTS SIO SISR : pfSense et 4 VLAN, HAProxy (HTTP + SQL), cluster MariaDB Galera 3 nœuds, WordPress redondé sur 2 serveurs, GLPI. Documentation complète, configurations anonymisées, scripts de validation et procédures de failover testables.
+</code></pre>
+<p><strong>Topics</strong> :</p>
+<pre><code class="language-text">bts-sio sisr proxmox pfsense haproxy mariadb galera wordpress glpi linux debian high-availability load-balancing vlan homelab infrastructure
+</code></pre>
+<p>Avec GitHub CLI :</p>
+<pre><code class="language-bash">gh repo edit --description &quot;Infrastructure haute disponibilité réalisée en BTS SIO SISR : pfSense et 4 VLAN, HAProxy (HTTP + SQL), cluster MariaDB Galera 3 nœuds, WordPress redondé, GLPI. Documentation, configurations anonymisées, scripts de validation et procédures de failover.&quot; \
+  --add-topic bts-sio,sisr,proxmox,pfsense,haproxy,mariadb,galera,wordpress,glpi,linux,debian,high-availability,load-balancing,vlan,homelab,infrastructure
+</code></pre>
+<h3 id="suite-logique-de-commits">Suite logique de commits</h3>
+<p>Pour un historique lisible qui raconte la construction du projet (alternative au commit unique initial) :</p>
+<pre><code class="language-bash">git add .gitignore .editorconfig .gitattributes LICENSE README.md SECURITY.md CONTRIBUTING.md CODE_OF_CONDUCT.md CHANGELOG.md
+git commit -m &quot;chore(repo): initialize BTS SIO HA infrastructure&quot;
+
+git add docs/00-overview docs/01-architecture docs/02-pfsense configs/pfsense diagrams/vlans.svg diagrams/architecture.svg
+git commit -m &quot;feat(network): document VLAN architecture&quot;
+
+git add docs/03-galera configs/galera scripts/install/install-galera.sh scripts/validation/check-galera.sh diagrams/galera-flow.svg
+git commit -m &quot;feat(galera): add three-node cluster configuration&quot;
+
+git add docs/04-haproxy configs/haproxy scripts/install/install-haproxy.sh scripts/validation/check-haproxy.sh scripts/utilities
+git commit -m &quot;feat(haproxy): add SQL and HTTP load balancing&quot;
+
+git add docs/05-wordpress configs/wordpress configs/apache/wordpress.conf.example scripts/install/install-wordpress-deps.sh scripts/validation/check-wordpress.sh diagrams/wordpress-flow.svg
+git commit -m &quot;feat(wordpress): add redundant web nodes&quot;
+
+git add docs/06-glpi configs/apache/glpi.conf.example scripts/install/install-glpi-deps.sh scripts/validation/check-glpi.sh
+git commit -m &quot;feat(glpi): add GLPI deployment&quot;
+
+git add docs/08-tests scripts/failover scripts/lib diagrams/failover-web.svg evidence
+git commit -m &quot;test(failover): document web failover validation&quot;
+
+git add docs/11-bts-sio docs/12-project-management deliverables examples
+git commit -m &quot;docs(bts): add BTS SIO technical documentation&quot;
+
+git add .
+git update-index --chmod=+x scripts/install/*.sh scripts/validation/*.sh scripts/failover/*.sh scripts/backup/*.sh scripts/utilities/*.sh
+git commit -m &quot;chore(repo): add CI, security docs, generator and remaining documentation&quot;
+</code></pre>
+<blockquote>
+<p>Sous Linux/macOS, le bit exécutable est enregistré automatiquement par <code>git add</code> ; la commande <code>git update-index --chmod=+x</code> n'est indispensable que sous Windows.</p>
+</blockquote>
+<h3 id="branches-et-commits">Branches et commits</h3>
+<p>Conventions : <code>CONTRIBUTING.md</code> (dépôt GitHub)</p>
+<h3 id="release">Release</h3>
+<p><code>release-v1.0.0.md</code> (dépôt GitHub)</p>

@@ -1,0 +1,833 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 10/10/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Concepts, installation, configuration de chaque nœud, amorçage, validation et reprise.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+</blockquote>
+<hr />
+<h2 id="galera-concepts">Galera — Concepts</h2>
+<h3 id="ce-que-fait-galera">Ce que fait Galera</h3>
+<p><strong>MariaDB Galera Cluster</strong> transforme plusieurs serveurs MariaDB en un cluster <strong>multi-maître synchrone</strong> :</p>
+<ul>
+<li><strong>multi-maître</strong> : chaque nœud accepte lectures <strong>et</strong> écritures ;</li>
+<li><strong>synchrone</strong> (« virtuellement synchrone ») : au <code>COMMIT</code>, la transaction est diffusée à tous les nœuds et <strong>certifiée</strong> avant d'être confirmée au client. Une transaction confirmée ne peut pas être perdue par la panne d'un nœud ;</li>
+<li><strong>automatique</strong> : un nœud qui revient se resynchronise seul (IST ou SST).</li>
+</ul>
+<p>Comparaison avec la réplication classique MariaDB (primaire / réplique asynchrone) :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Critère</th>
+<th>Réplication asynchrone</th>
+<th>Galera</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Écritures</td>
+<td>Primaire seul</td>
+<td>Tous les nœuds</td>
+</tr>
+<tr>
+<td>Perte possible si le primaire tombe</td>
+<td>Oui (transactions non encore répliquées)</td>
+<td>Non</td>
+</tr>
+<tr>
+<td>Bascule</td>
+<td>Manuelle ou outil externe</td>
+<td>Implicite (les autres nœuds sont déjà à jour)</td>
+</tr>
+<tr>
+<td>Latence d'écriture</td>
+<td>Faible</td>
+<td>+ 1 aller-retour réseau entre nœuds</td>
+</tr>
+<tr>
+<td>Moteur</td>
+<td>Tous</td>
+<td><strong>InnoDB uniquement</strong></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="cycle-dune-ecriture">Cycle d'une écriture</h3>
+<p align="center"><img src="/assets/img/ha/galera-flow.svg" alt="Flux de réplication Galera" width="750"></p>
+
+<ol>
+<li>Le client écrit sur bdd-02 (choisi par HAProxy).</li>
+<li>Au <code>COMMIT</code>, bdd-02 diffuse le <em>write-set</em> (lignes modifiées) aux autres nœuds (port 4567).</li>
+<li>Chaque nœud <strong>certifie</strong> le write-set : conflit avec une transaction concurrente ? Le résultat est déterministe et identique partout.</li>
+<li>Certifiée : la transaction est validée sur bdd-02 et appliquée sur bdd-01 et bdd-03.</li>
+<li>Conflit : le client reçoit une erreur <code>Deadlock found</code> et doit rejouer la transaction.</li>
+</ol>
+<h3 id="parametres-de-configuration">Paramètres de configuration</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Paramètre</th>
+<th>Valeur</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>wsrep_on</code></td>
+<td><code>ON</code></td>
+<td>Active la réplication Galera</td>
+</tr>
+<tr>
+<td><code>wsrep_provider</code></td>
+<td><code>/usr/lib/galera/libgalera_smm.so</code></td>
+<td>Bibliothèque Galera (paquet <code>galera-4</code>)</td>
+</tr>
+<tr>
+<td><code>wsrep_cluster_name</code></td>
+<td><code>mon_cluster_galera</code></td>
+<td>Nom du cluster ; <strong>identique</strong> sur tous les nœuds, sinon refus d'adhésion</td>
+</tr>
+<tr>
+<td><code>wsrep_cluster_address</code></td>
+<td><code>gcomm://10.0.20.1,10.0.20.2,10.0.20.3</code></td>
+<td>Membres à contacter au démarrage ; <strong>identique</strong> partout</td>
+</tr>
+<tr>
+<td><code>wsrep_node_address</code></td>
+<td>IP du nœud</td>
+<td>Adresse annoncée aux autres membres</td>
+</tr>
+<tr>
+<td><code>wsrep_node_name</code></td>
+<td><code>bdd-0X</code></td>
+<td>Nom lisible (journaux, <code>wsrep_incoming_addresses</code>)</td>
+</tr>
+<tr>
+<td><code>wsrep_sst_method</code></td>
+<td><code>rsync</code></td>
+<td>Méthode de transfert complet ; nécessite <code>rsync</code> sur tous les nœuds</td>
+</tr>
+<tr>
+<td><code>binlog_format</code></td>
+<td><code>ROW</code></td>
+<td>Réplication des <strong>lignes</strong> modifiées (et non des requêtes), seule méthode déterministe</td>
+</tr>
+<tr>
+<td><code>default_storage_engine</code></td>
+<td><code>InnoDB</code></td>
+<td>Seul moteur transactionnel répliqué de manière fiable (MyISAM : non)</td>
+</tr>
+<tr>
+<td><code>innodb_autoinc_lock_mode</code></td>
+<td><code>2</code></td>
+<td>Mode <em>interleaved</em> : pas de verrou de table pour AUTO_INCREMENT, indispensable au multi-maître</td>
+</tr>
+</tbody>
+</table></div>
+<p>Galera ajuste aussi <code>auto_increment_increment</code> et <code>auto_increment_offset</code> (<code>wsrep_auto_increment_control = ON</code>) : avec 3 nœuds, bdd-01 génère des identifiants 1, 4, 7…, bdd-02 2, 5, 8… — aucun doublon possible entre nœuds.</p>
+<h3 id="ports">Ports</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Port</th>
+<th>Usage</th>
+<th>Quand</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3306</td>
+<td>Connexions client SQL</td>
+<td>Permanent</td>
+</tr>
+<tr>
+<td>4567</td>
+<td>Communication de groupe et réplication</td>
+<td>Permanent</td>
+</tr>
+<tr>
+<td>4568</td>
+<td>IST — <em>Incremental State Transfer</em></td>
+<td>Retour d'un nœud brièvement absent</td>
+</tr>
+<tr>
+<td>4444</td>
+<td>SST — <em>State Snapshot Transfer</em></td>
+<td>Nouveau nœud ou nœud trop en retard</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="etats-dun-nud-wsrep-local-state-comment">États d'un nœud (<code>wsrep_local_state_comment</code>)</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>État</th>
+<th>Signification</th>
+<th>Peut servir ?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Joining</code></td>
+<td>En cours d'adhésion</td>
+<td>Non</td>
+</tr>
+<tr>
+<td><code>Joiner</code></td>
+<td>Reçoit un SST/IST</td>
+<td>Non</td>
+</tr>
+<tr>
+<td><code>Donor/Desynced</code></td>
+<td>Envoie un SST à un autre nœud (bloqué pendant <code>rsync</code>)</td>
+<td>Non</td>
+</tr>
+<tr>
+<td><code>Joined</code></td>
+<td>Données reçues, rattrape le retard</td>
+<td>Non</td>
+</tr>
+<tr>
+<td><code>Synced</code></td>
+<td>À jour</td>
+<td><strong>Oui</strong></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="quorum-et-split-brain">Quorum et split-brain</h3>
+<p>Le cluster reste <strong>Primary</strong> tant qu'un groupe de nœuds représente <strong>strictement plus de 50 %</strong> des membres du dernier état connu.</p>
+<ul>
+<li>Avec <strong>2 nœuds</strong>, la perte de l'un laisse 50 % : <strong>pas de quorum</strong>. Pire, en cas de coupure réseau entre les deux, chacun voit 50 % et les deux s'arrêtent. Deux nœuds n'apportent donc pas de tolérance aux pannes.</li>
+<li>Avec <strong>3 nœuds</strong>, un nœud isolé (33 %) passe en <code>non-Primary</code> et refuse les requêtes, pendant que les deux autres (67 %) continuent. Aucune divergence possible : c'est la protection contre le <strong>split-brain</strong>.</li>
+</ul>
+<p>Un arrêt <strong>propre</strong> (<code>systemctl stop</code>) est annoncé au cluster, qui recalcule sa taille : 3 → 2 → 1 nœud restant reste Primary. Une <strong>disparition brutale</strong> (crash, coupure réseau) n'est pas annoncée : c'est là que le quorum s'applique.</p>
+<h3 id="limites-a-connaitre">Limites à connaître</h3>
+<ul>
+<li>Tables sans clé primaire : à éviter (réplication inefficace, risques de divergence).</li>
+<li>Transactions très volumineuses : limitées par <code>wsrep_max_ws_size</code>.</li>
+<li>Verrous explicites (<code>LOCK TABLES</code>) : non supportés en multi-maître.</li>
+<li>La performance d'écriture est limitée par le nœud le plus lent (contrôle de flux).</li>
+</ul>
+<hr />
+<h2 id="galera-installation">Galera — Installation</h2>
+<p>Procédure commune aux trois nœuds. Les valeurs spécifiques sont dans mysql01.md, mysql02.md et mysql03.md.</p>
+<h3 id="1-prerequis">1. Prérequis</h3>
+<p><strong>SUR bdd-01, bdd-02 et bdd-03</strong></p>
+<pre><code class="language-bash">ip -4 addr show                 # IP correcte (10.0.20.X)
+ping -c 2 10.0.20.254           # passerelle
+ping -c 2 10.0.20.1             # voisins (même VLAN)
+sudo apt update                 # accès aux dépôts
+timedatectl                     # horloge synchronisée (NTP)
+</code></pre>
+<h3 id="2-paquets">2. Paquets</h3>
+<p><strong>SUR CHAQUE NŒUD</strong></p>
+<pre><code class="language-bash">sudo apt install -y mariadb-server mariadb-client galera-4 rsync
+mariadb --version               # 10.11.x attendu
+</code></pre>
+<blockquote>
+<p><code>rsync</code> est indispensable à la méthode SST <code>rsync</code> : sans lui, un nœud ne peut pas rejoindre le cluster (incident <a href="/procedure?id=depannage">INC-04</a>).</p>
+</blockquote>
+<p>Alternative scriptée (simulation puis exécution) :</p>
+<pre><code class="language-bash">sudo ./scripts/install/install-galera.sh --node-name bdd-01 --node-ip 10.0.20.1
+sudo ./scripts/install/install-galera.sh --node-name bdd-01 --node-ip 10.0.20.1 --apply
+</code></pre>
+<h3 id="3-securisation-initiale">3. Sécurisation initiale</h3>
+<p><strong>SUR CHAQUE NŒUD</strong> (avant formation du cluster)</p>
+<pre><code class="language-bash">sudo mariadb-secure-installation
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Question</th>
+<th>Réponse</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Switch to unix_socket authentication</td>
+<td><code>n</code> (déjà actif sous Debian)</td>
+</tr>
+<tr>
+<td>Change the root password</td>
+<td><code>n</code> (root via <code>sudo mariadb</code> uniquement)</td>
+</tr>
+<tr>
+<td>Remove anonymous users</td>
+<td><code>Y</code></td>
+</tr>
+<tr>
+<td>Disallow root login remotely</td>
+<td><code>Y</code></td>
+</tr>
+<tr>
+<td>Remove test database</td>
+<td><code>Y</code></td>
+</tr>
+<tr>
+<td>Reload privilege tables</td>
+<td><code>Y</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="4-configuration">4. Configuration</h3>
+<p><strong>SUR CHAQUE NŒUD</strong> : copier les deux fichiers de configs/galera/ correspondant au nœud.</p>
+<pre><code class="language-bash"># Exemple SUR bdd-01
+sudo cp /etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf.orig
+sudo cp configs/galera/mysql01/50-server.cnf.example /etc/mysql/mariadb.conf.d/50-server.cnf
+sudo cp configs/galera/mysql01/60-galera.cnf.example /etc/mysql/mariadb.conf.d/60-galera.cnf
+</code></pre>
+<p>Contrôle :</p>
+<pre><code class="language-bash">grep -E '^(bind-address|wsrep_)' /etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/mariadb.conf.d/60-galera.cnf
+</code></pre>
+<h3 id="5-arret-avant-formation-du-cluster">5. Arrêt avant formation du cluster</h3>
+<p><strong>SUR LES 3 NŒUDS</strong></p>
+<pre><code class="language-bash">sudo systemctl stop mariadb
+</code></pre>
+<p>Le cluster se forme ensuite selon bootstrap.md : <strong>un seul</strong> nœud est bootstrappé.</p>
+<h3 id="6-pare-feu-local-optionnel-recommande">6. Pare-feu local (optionnel, recommandé)</h3>
+<p>Voir <a href="/procedure?id=mo-05-ssh-durcissement">MO-5-SSH-et-durcissement.md</a> pour limiter 4567/4568/4444 aux deux autres nœuds et 3306 à HAProxy.</p>
+<hr />
+<h2 id="bdd-01-100201">bdd-01 — 10.0.20.1</h2>
+<p>Premier nœud. <strong>Candidat au bootstrap</strong> lors de la création initiale du cluster.</p>
+<h3 id="fiche">Fiche</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nom de VM</td>
+<td>bdd-01</td>
+</tr>
+<tr>
+<td>IP / masque</td>
+<td>10.0.20.1/24</td>
+</tr>
+<tr>
+<td>Passerelle</td>
+<td>10.0.20.254</td>
+</tr>
+<tr>
+<td>VLAN</td>
+<td>302 — vBDD</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Debian 12</td>
+</tr>
+<tr>
+<td>Logiciels</td>
+<td>MariaDB 10.11, Galera 4, rsync</td>
+</tr>
+<tr>
+<td>Configurations</td>
+<td><code>50-server.cnf.example</code> (dépôt GitHub), <code>60-galera.cnf.example</code> (dépôt GitHub)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="valeurs-specifiques-a-ce-nud">Valeurs spécifiques à ce nœud</h3>
+<pre><code class="language-ini"># /etc/mysql/mariadb.conf.d/50-server.cnf
+bind-address            = 10.0.20.1
+
+# /etc/mysql/mariadb.conf.d/60-galera.cnf
+wsrep_node_address       = &quot;10.0.20.1&quot;
+wsrep_node_name          = &quot;bdd-01&quot;
+</code></pre>
+<p>Tout le reste est identique sur les trois nœuds.</p>
+<h3 id="deploiement">Déploiement</h3>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-bash"># Réseau
+ip -4 addr show | grep 10.0.20.1
+
+# Paquets et configuration (simulation, puis --apply)
+sudo ./scripts/install/install-galera.sh --node-name bdd-01 --node-ip 10.0.20.1
+sudo ./scripts/install/install-galera.sh --node-name bdd-01 --node-ip 10.0.20.1 --apply
+
+# Vérifier les fichiers
+grep -E '^bind-address' /etc/mysql/mariadb.conf.d/50-server.cnf
+grep -E '^wsrep_node_(address|name)' /etc/mysql/mariadb.conf.d/60-galera.cnf
+</code></pre>
+<h3 id="demarrage">Démarrage</h3>
+<p>Lors de la <strong>création initiale</strong> du cluster uniquement :</p>
+<pre><code class="language-bash"># SUR bdd-01
+sudo galera_new_cluster
+</code></pre>
+<p>En fonctionnement normal ou après une panne : <code>sudo systemctl start mariadb</code>, <strong>jamais</strong> <code>galera_new_cluster</code> (voir bootstrap.md et recovery.md).</p>
+<h3 id="verification">Vérification</h3>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-bash">sudo ss -ltnp | grep -E ':(3306|4567)'     # 3306 sur 10.0.20.1, 4567 sur 0.0.0.0
+./scripts/validation/check-galera.sh
+</code></pre>
+<p>Attendu : <code>wsrep_cluster_size = 3</code>, <code>Primary</code>, <code>Synced</code>, <code>wsrep_ready = ON</code>.</p>
+<p>Capture attendue (au moins un nœud) : <code>evidence/screenshots/03-galera-cluster-size.png</code></p>
+<hr />
+<h2 id="bdd-02-100202">bdd-02 — 10.0.20.2</h2>
+<p>Deuxième nœud. Rejoint le cluster après le bootstrap de bdd-01.</p>
+<h3 id="fiche_1">Fiche</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nom de VM</td>
+<td>bdd-02</td>
+</tr>
+<tr>
+<td>IP / masque</td>
+<td>10.0.20.2/24</td>
+</tr>
+<tr>
+<td>Passerelle</td>
+<td>10.0.20.254</td>
+</tr>
+<tr>
+<td>VLAN</td>
+<td>302 — vBDD</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Debian 12</td>
+</tr>
+<tr>
+<td>Logiciels</td>
+<td>MariaDB 10.11, Galera 4, rsync</td>
+</tr>
+<tr>
+<td>Configurations</td>
+<td><code>50-server.cnf.example</code> (dépôt GitHub), <code>60-galera.cnf.example</code> (dépôt GitHub)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="valeurs-specifiques-a-ce-nud_1">Valeurs spécifiques à ce nœud</h3>
+<pre><code class="language-ini"># /etc/mysql/mariadb.conf.d/50-server.cnf
+bind-address            = 10.0.20.2
+
+# /etc/mysql/mariadb.conf.d/60-galera.cnf
+wsrep_node_address       = &quot;10.0.20.2&quot;
+wsrep_node_name          = &quot;bdd-02&quot;
+</code></pre>
+<p>Tout le reste est identique sur les trois nœuds.</p>
+<h3 id="deploiement_1">Déploiement</h3>
+<p><strong>SUR bdd-02</strong></p>
+<pre><code class="language-bash"># Réseau
+ip -4 addr show | grep 10.0.20.2
+
+# Paquets et configuration (simulation, puis --apply)
+sudo ./scripts/install/install-galera.sh --node-name bdd-02 --node-ip 10.0.20.2
+sudo ./scripts/install/install-galera.sh --node-name bdd-02 --node-ip 10.0.20.2 --apply
+
+# Vérifier les fichiers
+grep -E '^bind-address' /etc/mysql/mariadb.conf.d/50-server.cnf
+grep -E '^wsrep_node_(address|name)' /etc/mysql/mariadb.conf.d/60-galera.cnf
+</code></pre>
+<h3 id="demarrage_1">Démarrage</h3>
+<p>Après le bootstrap de bdd-01 :</p>
+<pre><code class="language-bash"># SUR bdd-02
+sudo systemctl start mariadb
+sudo journalctl -u mariadb -n 30 --no-pager     # rechercher &quot;Synchronized with group, ready for connections&quot;
+</code></pre>
+<h3 id="verification_1">Vérification</h3>
+<p><strong>SUR bdd-02</strong></p>
+<pre><code class="language-bash">sudo ss -ltnp | grep -E ':(3306|4567)'     # 3306 sur 10.0.20.2, 4567 sur 0.0.0.0
+./scripts/validation/check-galera.sh
+</code></pre>
+<p>Attendu : <code>wsrep_cluster_size = 3</code>, <code>Primary</code>, <code>Synced</code>, <code>wsrep_ready = ON</code>.</p>
+<p>Capture attendue (au moins un nœud) : <code>evidence/screenshots/03-galera-cluster-size.png</code></p>
+<hr />
+<h2 id="bdd-03-100203">bdd-03 — 10.0.20.3</h2>
+<p>Troisième nœud. Rejoint le cluster en dernier ; <strong>nœud recommandé pour les sauvegardes</strong> (<code>backup-mariadb.sh</code>).</p>
+<h3 id="fiche_2">Fiche</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Nom de VM</td>
+<td>bdd-03</td>
+</tr>
+<tr>
+<td>IP / masque</td>
+<td>10.0.20.3/24</td>
+</tr>
+<tr>
+<td>Passerelle</td>
+<td>10.0.20.254</td>
+</tr>
+<tr>
+<td>VLAN</td>
+<td>302 — vBDD</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Debian 12</td>
+</tr>
+<tr>
+<td>Logiciels</td>
+<td>MariaDB 10.11, Galera 4, rsync</td>
+</tr>
+<tr>
+<td>Configurations</td>
+<td><code>50-server.cnf.example</code> (dépôt GitHub), <code>60-galera.cnf.example</code> (dépôt GitHub)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="valeurs-specifiques-a-ce-nud_2">Valeurs spécifiques à ce nœud</h3>
+<pre><code class="language-ini"># /etc/mysql/mariadb.conf.d/50-server.cnf
+bind-address            = 10.0.20.3
+
+# /etc/mysql/mariadb.conf.d/60-galera.cnf
+wsrep_node_address       = &quot;10.0.20.3&quot;
+wsrep_node_name          = &quot;bdd-03&quot;
+</code></pre>
+<p>Tout le reste est identique sur les trois nœuds.</p>
+<h3 id="deploiement_2">Déploiement</h3>
+<p><strong>SUR bdd-03</strong></p>
+<pre><code class="language-bash"># Réseau
+ip -4 addr show | grep 10.0.20.3
+
+# Paquets et configuration (simulation, puis --apply)
+sudo ./scripts/install/install-galera.sh --node-name bdd-03 --node-ip 10.0.20.3
+sudo ./scripts/install/install-galera.sh --node-name bdd-03 --node-ip 10.0.20.3 --apply
+
+# Vérifier les fichiers
+grep -E '^bind-address' /etc/mysql/mariadb.conf.d/50-server.cnf
+grep -E '^wsrep_node_(address|name)' /etc/mysql/mariadb.conf.d/60-galera.cnf
+</code></pre>
+<h3 id="demarrage_2">Démarrage</h3>
+<p>Après que bdd-02 est <code>Synced</code> :</p>
+<pre><code class="language-bash"># SUR bdd-03
+sudo systemctl start mariadb
+sudo journalctl -u mariadb -n 30 --no-pager
+</code></pre>
+<p>Démarrer les nœuds <strong>un par un</strong> évite que deux nœuds demandent un SST en même temps au même donneur.</p>
+<h3 id="verification_2">Vérification</h3>
+<p><strong>SUR bdd-03</strong></p>
+<pre><code class="language-bash">sudo ss -ltnp | grep -E ':(3306|4567)'     # 3306 sur 10.0.20.3, 4567 sur 0.0.0.0
+./scripts/validation/check-galera.sh
+</code></pre>
+<p>Attendu : <code>wsrep_cluster_size = 3</code>, <code>Primary</code>, <code>Synced</code>, <code>wsrep_ready = ON</code>.</p>
+<p>Capture attendue (au moins un nœud) : <code>evidence/screenshots/03-galera-cluster-size.png</code></p>
+<hr />
+<h2 id="galera-bootstrap">Galera — Bootstrap</h2>
+<p>Le <strong>bootstrap</strong> crée un <strong>nouveau</strong> cluster à partir d'un seul nœud. Les autres nœuds le rejoignent ensuite et reçoivent ses données.</p>
+<blockquote>
+<p><strong>Règle absolue</strong> : on ne bootstrappe qu'<strong>un seul</strong> nœud, <strong>une seule fois</strong>, et seulement quand <strong>aucun</strong> nœud du cluster n'est en fonctionnement. Bootstrapper un deuxième nœud crée un <strong>deuxième cluster</strong> indépendant : les données divergent (split-brain volontaire). Aucun script de ce dépôt n'automatise cette opération.</p>
+</blockquote>
+<h3 id="quand-bootstrapper">Quand bootstrapper ?</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Bootstrap ?</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Création initiale du cluster</td>
+<td><strong>Oui</strong>, sur bdd-01</td>
+<td><code>galera_new_cluster</code></td>
+</tr>
+<tr>
+<td>Un nœud redémarre, les autres tournent</td>
+<td><strong>Non</strong></td>
+<td><code>systemctl start mariadb</code></td>
+</tr>
+<tr>
+<td>Les 3 nœuds ont été arrêtés proprement</td>
+<td><strong>Oui</strong>, sur le dernier arrêté (<code>safe_to_bootstrap: 1</code>)</td>
+<td>Voir recovery.md</td>
+</tr>
+<tr>
+<td>Les 3 nœuds ont crashé (coupure électrique)</td>
+<td><strong>Oui</strong>, sur le nœud au <code>seqno</code> le plus élevé, après analyse</td>
+<td>Voir recovery.md</td>
+</tr>
+<tr>
+<td>Cluster <code>non-Primary</code> mais nœuds en marche</td>
+<td><strong>Non</strong> — on ne redémarre rien</td>
+<td>Voir recovery.md</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="procedure-de-creation-initiale">Procédure de création initiale</h3>
+<h4 id="etape-1-tous-les-nuds-arretes">Étape 1 — Tous les nœuds arrêtés</h4>
+<p><strong>SUR bdd-01, bdd-02, bdd-03</strong></p>
+<pre><code class="language-bash">sudo systemctl stop mariadb
+systemctl is-active mariadb        # attendu : inactive
+</code></pre>
+<h4 id="etape-2-bootstrap-de-bdd-01">Étape 2 — Bootstrap de bdd-01</h4>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-bash">sudo galera_new_cluster
+sudo mariadb -e &quot;SHOW STATUS LIKE 'wsrep_cluster_size';&quot;     # attendu : 1
+sudo mariadb -e &quot;SHOW STATUS LIKE 'wsrep_cluster_status';&quot;   # attendu : Primary
+</code></pre>
+<p><code>galera_new_cluster</code> démarre MariaDB avec <code>--wsrep-new-cluster</code> : le nœud ne cherche pas de pairs et devient le cluster.</p>
+<h4 id="etape-3-ajout-de-bdd-02">Étape 3 — Ajout de bdd-02</h4>
+<p><strong>SUR bdd-02</strong></p>
+<pre><code class="language-bash">sudo systemctl start mariadb
+sudo mariadb -e &quot;SHOW STATUS LIKE 'wsrep_cluster_size';&quot;     # attendu : 2
+</code></pre>
+<p>bdd-02 contacte les adresses de <code>wsrep_cluster_address</code>, trouve bdd-01 et reçoit un <strong>SST</strong> (copie complète via rsync, port 4444).</p>
+<h4 id="etape-4-ajout-de-bdd-03">Étape 4 — Ajout de bdd-03</h4>
+<p><strong>SUR bdd-03</strong></p>
+<pre><code class="language-bash">sudo systemctl start mariadb
+sudo mariadb -e &quot;SHOW STATUS LIKE 'wsrep_cluster_size';&quot;     # attendu : 3
+</code></pre>
+<h4 id="etape-5-retour-de-bdd-01-en-mode-normal">Étape 5 — Retour de bdd-01 en mode normal</h4>
+<p>bdd-01 a été démarré « en mode bootstrap » par <code>galera_new_cluster</code>. Le redémarrer normalement est <strong>facultatif</strong> mais permet de vérifier que tout le cluster démarre avec la configuration standard :</p>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-bash">sudo systemctl restart mariadb
+sudo mariadb -e &quot;SHOW STATUS LIKE 'wsrep_cluster_size';&quot;     # attendu : 3
+</code></pre>
+<h3 id="validation">Validation</h3>
+<p><strong>SUR CHAQUE NŒUD</strong></p>
+<pre><code class="language-bash">./scripts/validation/check-galera.sh
+</code></pre>
+<p>Puis le test de réplication : validation.md.</p>
+<h3 id="erreurs-frequentes">Erreurs fréquentes</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Message</th>
+<th>Cause</th>
+<th>Correction</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>It may not be safe to bootstrap the cluster from this node</code></td>
+<td><code>safe_to_bootstrap: 0</code> dans <code>grastate.dat</code></td>
+<td>Vérifier que c'est le bon nœud (recovery.md)</td>
+</tr>
+<tr>
+<td><code>failed to open gcomm backend connection: 110</code></td>
+<td>Aucun pair joignable et pas de bootstrap</td>
+<td>Normal pour le premier nœud : utiliser <code>galera_new_cluster</code></td>
+</tr>
+<tr>
+<td><code>rsync: command not found</code> côté donneur ou receveur</td>
+<td>Paquet manquant</td>
+<td><code>sudo apt install rsync</code> sur tous les nœuds</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="galera-validation">Galera — Validation</h2>
+<h3 id="1-etat-du-cluster">1. État du cluster</h3>
+<p><strong>SUR bdd-01, bdd-02, bdd-03</strong></p>
+<pre><code class="language-bash">./scripts/validation/check-galera.sh
+</code></pre>
+<p>Ou manuellement :</p>
+<pre><code class="language-bash">sudo mariadb -e &quot;SHOW GLOBAL STATUS WHERE Variable_name IN
+  ('wsrep_cluster_size','wsrep_cluster_status','wsrep_local_state_comment','wsrep_ready');&quot;
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Attendu</th>
+<th>Test</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>wsrep_cluster_size</code></td>
+<td><code>3</code></td>
+<td>T04</td>
+</tr>
+<tr>
+<td><code>wsrep_cluster_status</code></td>
+<td><code>Primary</code></td>
+<td>T05</td>
+</tr>
+<tr>
+<td><code>wsrep_local_state_comment</code></td>
+<td><code>Synced</code></td>
+<td>T06</td>
+</tr>
+<tr>
+<td><code>wsrep_ready</code></td>
+<td><code>ON</code></td>
+<td>T07</td>
+</tr>
+</tbody>
+</table></div>
+<p>Vue d'ensemble depuis HAProxy :</p>
+<pre><code class="language-bash"># SUR haproxy
+./scripts/utilities/show-cluster-status.sh
+</code></pre>
+<h3 id="2-replication-test-t08">2. Réplication (test T08)</h3>
+<p>Créer une donnée sur un nœud, la lire sur les deux autres.</p>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-sql">-- sudo mariadb
+CREATE DATABASE IF NOT EXISTS ha_test;
+CREATE TABLE IF NOT EXISTS ha_test.replication (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  origin VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+INSERT INTO ha_test.replication (origin) VALUES ('bdd-01');
+</code></pre>
+<p><strong>SUR bdd-02</strong></p>
+<pre><code class="language-sql">SELECT * FROM ha_test.replication;              -- la ligne bdd-01 est présente
+INSERT INTO ha_test.replication (origin) VALUES ('bdd-02');
+</code></pre>
+<p><strong>SUR bdd-03</strong></p>
+<pre><code class="language-sql">SELECT * FROM ha_test.replication;              -- les deux lignes sont présentes
+INSERT INTO ha_test.replication (origin) VALUES ('bdd-03');
+</code></pre>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-sql">SELECT * FROM ha_test.replication ORDER BY id;  -- 3 lignes ; ids non consécutifs (1, 2, 3 ou 1, 5, 9…)
+</code></pre>
+<p>Les identifiants non consécutifs sont <strong>normaux</strong> : chaque nœud utilise son propre décalage AUTO_INCREMENT pour éviter les collisions.</p>
+<p>Nettoyage :</p>
+<pre><code class="language-sql">-- SUR N'IMPORTE QUEL NŒUD (répliqué partout)
+DROP DATABASE ha_test;
+</code></pre>
+<h3 id="3-acces-via-haproxy-tests-t09-t10">3. Accès via HAProxy (tests T09, T10)</h3>
+<pre><code class="language-bash"># SUR haproxy
+./scripts/utilities/test-sql-round-robin.sh -n 9
+</code></pre>
+<p>Attendu : 3 noms d'hôte distincts, 3 connexions chacun.</p>
+<h3 id="4-perte-dun-nud-test-t20">4. Perte d'un nœud (test T20)</h3>
+<pre><code class="language-bash"># SUR haproxy
+./scripts/failover/test-galera-node.sh --node 3
+</code></pre>
+<p>Procédure détaillée : <a href="/procedure?id=plan-de-tests">Plan-de-tests.md</a></p>
+<hr />
+<h2 id="galera-reprise-apres-panne">Galera — Reprise après panne</h2>
+<blockquote>
+<p><strong>Principe</strong> : comprendre l'état avant d'agir. Un bootstrap sur le mauvais nœud <strong>efface définitivement</strong> les transactions les plus récentes (les autres nœuds se resynchronisent sur un état plus ancien). Rien n'est automatisé ici.</p>
+</blockquote>
+<h3 id="outils-de-diagnostic">Outils de diagnostic</h3>
+<h4 id="grastatedat">grastate.dat</h4>
+<p><strong>SUR CHAQUE NŒUD ARRÊTÉ</strong></p>
+<pre><code class="language-bash">sudo cat /var/lib/mysql/grastate.dat
+</code></pre>
+<pre><code class="language-text"># GALERA saved state
+version: 2.1
+uuid:    8f3c...-....-....-....-............
+seqno:   1842
+safe_to_bootstrap: 0
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Champ</th>
+<th>Signification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>uuid</code></td>
+<td>Identifiant du cluster ; doit être identique sur les 3 nœuds</td>
+</tr>
+<tr>
+<td><code>seqno</code></td>
+<td>Dernière transaction appliquée. <code>-1</code> : arrêt brutal, valeur inconnue (voir <code>galera_recovery</code>)</td>
+</tr>
+<tr>
+<td><code>safe_to_bootstrap</code></td>
+<td><code>1</code> sur le <strong>dernier nœud arrêté proprement</strong> : seul candidat sûr</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="galera-recovery">galera_recovery</h4>
+<p>Quand <code>seqno: -1</code> (crash), la position réelle est lue dans les journaux InnoDB :</p>
+<p><strong>SUR CHAQUE NŒUD ARRÊTÉ</strong></p>
+<pre><code class="language-bash">sudo galera_recovery
+</code></pre>
+<pre><code class="language-text">--wsrep_start_position=8f3c...:1842
+</code></pre>
+<p>Le nombre après <code>:</code> est le <code>seqno</code> réel. <strong>Comparer les trois nœuds</strong> : le plus élevé est le plus à jour.</p>
+<h4 id="etat-dun-nud-en-marche">État d'un nœud en marche</h4>
+<pre><code class="language-bash">sudo mariadb -e &quot;SHOW STATUS WHERE Variable_name IN ('wsrep_cluster_size','wsrep_cluster_status','wsrep_local_state_comment','wsrep_last_committed');&quot;
+</code></pre>
+<h3 id="scenarios">Scénarios</h3>
+<h4 id="1-un-nud-tombe-les-deux-autres-tournent">1. Un nœud tombe, les deux autres tournent</h4>
+<p><strong>Situation normale de la HA.</strong> Les deux nœuds restants sont <code>Primary</code> (2/3).</p>
+<p><strong>SUR LE NŒUD TOMBÉ</strong></p>
+<pre><code class="language-bash">sudo systemctl start mariadb
+</code></pre>
+<p>Il rejoint seul le cluster par IST (ou SST si trop en retard). <strong>Pas de bootstrap.</strong></p>
+<h4 id="2-les-3-nuds-ont-ete-arretes-proprement">2. Les 3 nœuds ont été arrêtés proprement</h4>
+<p>Le dernier arrêté a <code>safe_to_bootstrap: 1</code>.</p>
+<ol>
+<li><strong>SUR LES 3 NŒUDS</strong> : <code>sudo cat /var/lib/mysql/grastate.dat</code></li>
+<li><strong>SUR LE NŒUD AVEC <code>safe_to_bootstrap: 1</code></strong> : <code>sudo galera_new_cluster</code></li>
+<li><strong>SUR LES DEUX AUTRES</strong>, l'un après l'autre : <code>sudo systemctl start mariadb</code></li>
+</ol>
+<h4 id="3-les-3-nuds-ont-crashe-coupure-electrique-de-lhote-proxmox">3. Les 3 nœuds ont crashé (coupure électrique de l'hôte Proxmox)</h4>
+<p>Tous ont <code>safe_to_bootstrap: 0</code> et souvent <code>seqno: -1</code>.</p>
+<ol>
+<li><strong>SUR LES 3 NŒUDS</strong> : <code>sudo galera_recovery</code> → noter le <code>seqno</code>.</li>
+<li>Choisir le nœud au <strong><code>seqno</code> le plus élevé</strong> (en cas d'égalité : n'importe lequel des ex-aequo).</li>
+<li><strong>SUR CE NŒUD UNIQUEMENT</strong> : passer <code>safe_to_bootstrap</code> à 1 <strong>en connaissance de cause</strong> :</li>
+</ol>
+<p><code>bash
+   sudo sed -i 's/^safe_to_bootstrap: 0/safe_to_bootstrap: 1/' /var/lib/mysql/grastate.dat
+   sudo galera_new_cluster</code></p>
+<ol start="4">
+<li><strong>SUR LES DEUX AUTRES</strong> : <code>sudo systemctl start mariadb</code>.</li>
+<li>Valider avec <code>check-galera.sh</code> sur chaque nœud, puis vérifier l'application (WordPress, GLPI).</li>
+</ol>
+<h4 id="perte-de-quorum-sans-arret">Perte de quorum sans arrêt</h4>
+<p>Exemple : coupure réseau isolant chaque nœud ; tous sont en marche mais <code>non-Primary</code>.</p>
+<ul>
+<li>Si le réseau revient, le cluster se reforme <strong>seul</strong>.</li>
+<li>Si un groupe doit reprendre le service sans attendre, <strong>sur un nœud du groupe choisi</strong> (le plus à jour) :</li>
+</ul>
+<p><code>sql
+  SET GLOBAL wsrep_provider_options='pc.bootstrap=YES';</code></p>
+<p>Les nœuds de l'autre groupe devront ensuite être redémarrés (<code>systemctl restart mariadb</code>) pour se resynchroniser.</p>
+<h3 id="quorum-et-split-brain-rappel">Quorum et split-brain : rappel</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Nœuds vivants (sur 3)</th>
+<th>Action automatique</th>
+<th>Intervention humaine</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>3</td>
+<td>—</td>
+<td>—</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Restent Primary</td>
+<td>Redémarrer le 3e nœud</td>
+</tr>
+<tr>
+<td>1 (les 2 autres arrêtés <strong>proprement</strong>)</td>
+<td>Reste Primary (taille recalculée à 1)</td>
+<td>Redémarrer les autres</td>
+</tr>
+<tr>
+<td>1 (les 2 autres <strong>disparus brutalement</strong>)</td>
+<td>Passe non-Primary, refuse le SQL</td>
+<td>Analyse puis <code>pc.bootstrap</code> ou bootstrap</td>
+</tr>
+</tbody>
+</table></div>
+<p>Le passage en <code>non-Primary</code> est une <strong>protection</strong> : il vaut mieux un service arrêté que deux bases qui divergent.</p>
+<h3 id="apres-toute-reprise">Après toute reprise</h3>
+<ul>
+<li>[ ] <code>check-galera.sh</code> OK sur les 3 nœuds</li>
+<li>[ ] <code>test-sql-round-robin.sh</code> : 3 nœuds répondent via HAProxy</li>
+<li>[ ] WordPress et GLPI fonctionnels</li>
+<li>[ ] Incident consigné dans <a href="/procedure?id=depannage">Troubleshooting.md</a></li>
+</ul>

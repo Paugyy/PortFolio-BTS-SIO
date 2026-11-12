@@ -1,0 +1,49 @@
+<p>Bastion d'accès RDP / SSH / VNC depuis un simple navigateur.</p>
+<p>Guacamole se compose de 3 briques : <strong>guacd</strong> (le moteur qui parle RDP/SSH), <strong>guacamole</strong> (l'interface web) et une <strong>base de données</strong> (utilisateurs et connexions).</p>
+<h2 id="1-preparer-le-dossier">1. Préparer le dossier</h2>
+<pre><code class="language-bash">mkdir -p ~/guacamole/init &amp;&amp; cd ~/guacamole
+# Générer le script de création de la base
+docker run --rm guacamole/guacamole:1.5.5 /opt/guacamole/bin/initdb.sh --postgresql &gt; init/initdb.sql
+</code></pre>
+<h2 id="2-fichier-docker-composeyml">2. Fichier <code>docker-compose.yml</code></h2>
+<pre><code class="language-yaml">services:
+  guacd:
+    image: guacamole/guacd:1.5.5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: guacamole_db
+      POSTGRES_USER: guacamole_user
+      POSTGRES_PASSWORD: MotDePasseSolide
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d:ro
+      - ./data:/var/lib/postgresql/data
+
+  guacamole:
+    image: guacamole/guacamole:1.5.5
+    restart: unless-stopped
+    depends_on: [guacd, postgres]
+    environment:
+      GUACD_HOSTNAME: guacd
+      POSTGRESQL_HOSTNAME: postgres
+      POSTGRESQL_DATABASE: guacamole_db
+      POSTGRESQL_USER: guacamole_user
+      POSTGRESQL_PASSWORD: MotDePasseSolide
+    ports:
+      - &quot;8080:8080&quot;
+</code></pre>
+<h2 id="3-lancer-et-se-connecter">3. Lancer et se connecter</h2>
+<pre><code class="language-bash">docker compose up -d
+docker compose logs -f guacamole   # vérifier qu'il n'y a pas d'erreur
+</code></pre>
+<ol>
+<li>Ouvrir <code>http://IP_DU_SERVEUR:8080/guacamole</code></li>
+<li>Identifiants par défaut : <code>guacadmin</code> / <code>guacadmin</code> → <strong>créer un nouvel admin et supprimer guacadmin</strong>.</li>
+<li><em>Paramètres → Connexions → Nouvelle connexion</em> : protocole RDP, hôte, port 3389, identifiants, et cocher « Ignorer le certificat du serveur » en lab.</li>
+</ol>
+<blockquote>
+<p>🔐 En production : placer Guacamole derrière un reverse proxy HTTPS (Nginx) et activer la double authentification (extension TOTP).</p>
+</blockquote>

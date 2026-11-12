@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://formsubmit.co; form-action 'self' https://formsubmit.co; base-uri 'self'; object-src 'none'; frame-src 'none'; manifest-src 'self'; upgrade-insecure-requests">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/favicon.ico" sizes="32x32">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="description" content="Procédure de Yannis Paugy (BTS SIO SISR), à lire en ligne ou à télécharger en PDF et Markdown.">
+  <title>Procédure — Yannis Paugy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/css/style.css?v=202610081500">
+  <link rel="stylesheet" href="/assets/css/theme.css?v=202610081500">
+  <link rel="stylesheet" href="/assets/css/procedures.css?v=202611121800">
+</head>
+<body>
+<main>
+  <header class="page-head container pd-head">
+    <nav class="pd-crumb" aria-label="Fil d'Ariane"><a href="/procedures">Procédures</a> › <span id="pd-crumb"></span></nav>
+    <span class="pd-kicker" id="pd-kicker"></span>
+    <h1 id="pd-titre">Chargement…</h1>
+    <p id="pd-resume"></p>
+    <div class="pr-actions" id="pd-actions"></div>
+  </header>
+
+  <section style="padding-top:0">
+    <div class="container">
+      <div class="pd-layout">
+        <aside class="card pd-toc" id="pd-toc" aria-label="Sommaire"><strong>Sommaire</strong><ol id="pd-toc-list"></ol></aside>
+        <div>
+          <article class="card doc" id="pd-doc"></article>
+          <nav class="pd-nav" id="pd-nav" aria-label="Procédure précédente et suivante"></nav>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="/assets/js/procedures-data.js?v=202611121800"></script>
+<script src="/assets/js/main.js?v=202611121800"></script>
+<script src="/assets/js/page-procedure.js?v=202611121800"></script>
+<script type="module" src="/assets/js/scene.js?v=202610081500"></script>
+</body>
+</html>

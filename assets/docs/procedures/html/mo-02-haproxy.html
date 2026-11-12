@@ -1,0 +1,464 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 10/10/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Installation, vérifications d'état, répartition HTTP (WordPress, GLPI) et SQL.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+<p>⚠️ <strong>Écarts avec le labo réel</strong> (configuration relevée le 01/10/2026, voir le DAT §7.2) :
+HAProxy contrôle ses serveurs <strong>toutes les 2 s</strong> (<code>inter 2s fall 3 rise 2</code>), le contrôle SQL est un simple
+test de port (<code>tcp-check</code>, pas <code>mysql-check</code>), et il n'y a <strong>ni page de statistiques (8404) ni en-tête
+<code>X-Served-By</code></strong> : les passages qui les citent décrivent une cible, pas l'existant. adm-01 est le contrôleur
+de domaine Windows : les commandes notées « sur adm-01 » se jouent depuis une session du bastion Guacamole.</p>
+</blockquote>
+<hr />
+<h2 id="haproxy-installation">HAProxy — Installation</h2>
+<h3 id="fiche">Fiche</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM</td>
+<td>haproxy</td>
+</tr>
+<tr>
+<td>IP</td>
+<td>10.0.10.2/24, passerelle 10.0.10.254</td>
+</tr>
+<tr>
+<td>VLAN</td>
+<td>301 — vWEB</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Debian 12</td>
+</tr>
+<tr>
+<td>Logiciel</td>
+<td>HAProxy 2.6 (paquet Debian)</td>
+</tr>
+<tr>
+<td>Compte d'administration</td>
+<td><code>haproxyadmin</code> (<strong>pas</strong> <code>haproxy</code> — voir ci-dessous)</td>
+</tr>
+<tr>
+<td>Configuration</td>
+<td><code>configs/haproxy/haproxy.cfg.example</code> (dépôt GitHub)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="compte-dadministration-ne-pas-lappeler-haproxy">Compte d'administration : ne pas l'appeler « haproxy »</h3>
+<p>Lors de l'installation de Debian, l'installateur demande de créer un utilisateur. Le nommer <code>haproxy</code> crée un compte <strong>humain</strong> (uid ≥ 1000, shell, home) qui <strong>entre en conflit</strong> avec le compte <strong>système</strong> que le paquet <code>haproxy</code> veut créer pour faire tourner le service. Résultat : erreurs à l'installation du paquet ou service lancé avec un compte doté d'un shell — à éviter.</p>
+<p><strong>Règle</strong> : compte humain <code>haproxyadmin</code>, compte système <code>haproxy</code> laissé au paquet. Détail : <a href="/procedure?id=depannage">incident INC-08</a>.</p>
+<pre><code class="language-bash"># SUR haproxy — vérification
+getent passwd haproxy        # attendu : uid &lt; 1000, shell /usr/sbin/nologin
+</code></pre>
+<h3 id="installation">Installation</h3>
+<p><strong>SUR haproxy</strong></p>
+<pre><code class="language-bash">sudo ./scripts/install/install-haproxy.sh            # simulation
+sudo ./scripts/install/install-haproxy.sh --apply    # exécution
+</code></pre>
+<p>Ou manuellement :</p>
+<pre><code class="language-bash">sudo apt update
+sudo apt install -y haproxy mariadb-client socat curl
+haproxy -v
+</code></pre>
+<h3 id="compte-de-health-check-sql">Compte de health-check SQL</h3>
+<p><strong>SUR bdd-01</strong> (répliqué sur les 3 nœuds)</p>
+<pre><code class="language-sql">-- sudo mariadb
+CREATE USER 'haproxy_check'@'10.0.10.2';
+-- Aucun GRANT : le compte peut seulement ouvrir une session.
+</code></pre>
+<h3 id="configuration">Configuration</h3>
+<p><strong>SUR haproxy</strong></p>
+<pre><code class="language-bash">sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.orig
+sudo cp configs/haproxy/haproxy.cfg.example /etc/haproxy/haproxy.cfg
+sudo nano /etc/haproxy/haproxy.cfg                 # remplacer &lt;PASSWORD&gt; (page de stats)
+sudo haproxy -c -f /etc/haproxy/haproxy.cfg        # &quot;Configuration file is valid&quot;
+sudo systemctl enable --now haproxy
+sudo systemctl reload haproxy
+</code></pre>
+<p><code>reload</code> applique la nouvelle configuration <strong>sans couper</strong> les connexions en cours ; <code>restart</code> les coupe. Toujours lancer <code>haproxy -c</code> avant.</p>
+<h3 id="verification">Vérification</h3>
+<pre><code class="language-bash"># SUR haproxy
+./scripts/validation/check-haproxy.sh
+sudo ss -ltnp | grep haproxy        # 80, 3306, 8080, 8404 sur 10.0.10.2
+</code></pre>
+<p>Page de statistiques depuis adm-01 : <code>http://10.0.10.2:8404/stats</code> — capture attendue <code>evidence/screenshots/05-haproxy-status.png</code>.</p>
+<p>Suite : sql-load-balancing.md, wordpress-load-balancing.md</p>
+<hr />
+<h2 id="haproxy-health-checks">HAProxy — Health-checks</h2>
+<p>Un health-check est un test périodique qui décide si un serveur reçoit du trafic. <strong>Sans health-check, il n'y a pas de haute disponibilité</strong> : HAProxy continuerait d'envoyer des requêtes vers un serveur mort.</p>
+<h3 id="parametres">Paramètres</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Paramètre</th>
+<th>Valeur</th>
+<th>Effet</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>inter 3s</code></td>
+<td>3 secondes</td>
+<td>Intervalle entre deux tests</td>
+</tr>
+<tr>
+<td><code>fall 3</code></td>
+<td>3 échecs</td>
+<td>Serveur déclaré <strong>DOWN</strong> après ~9 s</td>
+</tr>
+<tr>
+<td><code>rise 2</code></td>
+<td>2 succès</td>
+<td>Serveur déclaré <strong>UP</strong> après ~6 s</td>
+</tr>
+<tr>
+<td><code>timeout check 3s</code></td>
+<td>3 secondes</td>
+<td>Délai maximum d'une réponse au test</td>
+</tr>
+</tbody>
+</table></div>
+<p>Compromis : des valeurs plus basses détectent plus vite une panne mais risquent des <strong>faux positifs</strong> (un serveur lent retiré à tort) et ajoutent de la charge.</p>
+<h3 id="checks-par-service">Checks par service</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Backend</th>
+<th>Type</th>
+<th>Ce qui est testé</th>
+<th>Ce qui n'est <strong>pas</strong> testé</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>be_wordpress</code></td>
+<td>HTTP GET <code>/wp-login.php</code>, attendu 2xx/3xx</td>
+<td>Apache, PHP, accès base</td>
+<td>Contenu de la page</td>
+</tr>
+<tr>
+<td><code>be_glpi</code></td>
+<td>HTTP GET <code>/</code>, attendu 2xx/3xx</td>
+<td>Apache, PHP, routage GLPI</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>galera_cluster</code></td>
+<td><code>mysql-check</code> (handshake + login)</td>
+<td>MariaDB démarré et joignable</td>
+<td><strong>État Galera</strong> (<code>Synced</code>, <code>Primary</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="limite-du-check-sql-et-amelioration">Limite du check SQL et amélioration</h3>
+<p>Un nœud peut <strong>accepter une connexion</strong> tout en étant inutilisable :</p>
+<ul>
+<li><code>Donor/Desynced</code> pendant un SST rsync (bloqué en lecture/écriture) ;</li>
+<li><code>non-Primary</code> après une perte de quorum (<code>WSREP has not yet prepared node for application use</code>).</li>
+</ul>
+<p><code>mysql-check</code> le considère sain. <strong>Amélioration (roadmap)</strong> : check <em>wsrep-aware</em> via un petit service HTTP sur chaque nœud (ex. script <code>clustercheck</code> exposé sur le port 9200) qui renvoie <code>200</code> uniquement si <code>wsrep_local_state = 4</code> (Synced) :</p>
+<pre><code class="language-haproxy"># Exemple — amélioration future, NON déployée
+listen galera_cluster
+    bind 10.0.10.2:3306
+    mode tcp
+    balance roundrobin
+    option httpchk
+    http-check expect status 200
+    default-server port 9200 inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server bdd-01 10.0.20.1:3306 check
+    server bdd-02 10.0.20.2:3306 check
+    server bdd-03 10.0.20.3:3306 check
+</code></pre>
+<h3 id="observer-les-checks">Observer les checks</h3>
+<pre><code class="language-bash"># SUR haproxy — journal en direct
+sudo journalctl -u haproxy -f
+# Exemple de ligne lors d'une panne :
+#   Server be_wordpress/web-01 is DOWN, reason: Layer4 connection problem ...
+
+# État instantané
+./scripts/validation/check-haproxy.sh
+echo &quot;show servers state&quot; | sudo socat stdio /run/haproxy/admin.sock
+</code></pre>
+<p>Page de statistiques : <code>http://10.0.10.2:8404/stats</code> (depuis vADMIN) — colonne <em>Status</em> et <em>LastChk</em>.</p>
+<hr />
+<h2 id="haproxy-repartition-wordpress">HAProxy — Répartition WordPress</h2>
+<h3 id="configuration_1">Configuration</h3>
+<pre><code class="language-haproxy">frontend fe_wordpress
+    bind 10.0.10.2:80
+    option forwardfor
+    http-request set-header X-Forwarded-Proto http
+    default_backend be_wordpress
+
+backend be_wordpress
+    balance roundrobin
+    option httpchk
+    http-check send meth GET uri /wp-login.php ver HTTP/1.1 hdr Host 10.0.10.2
+    http-check expect status 200-399
+    cookie SRV_WP insert indirect nocache httponly
+    http-response set-header X-Served-By %[srv_name]
+    default-server inter 3s fall 3 rise 2
+    server web-01 10.0.10.1:80 check cookie web01
+    server web-02 10.0.10.4:80 check cookie web02
+</code></pre>
+<h3 id="explication">Explication</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Directive</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mode http</code> (hérité de <code>defaults</code>)</td>
+<td>HAProxy comprend HTTP (couche 7) : en-têtes, cookies, codes de retour</td>
+</tr>
+<tr>
+<td><code>option forwardfor</code></td>
+<td>Ajoute <code>X-Forwarded-For: &lt;IP client&gt;</code> ; Apache le lit via <code>mod_remoteip</code> pour journaliser la vraie IP</td>
+</tr>
+<tr>
+<td><code>balance roundrobin</code></td>
+<td>Alternance web-01 / web-02</td>
+</tr>
+<tr>
+<td><code>option httpchk</code> + <code>http-check send</code></td>
+<td>Health-check applicatif sur <code>/wp-login.php</code> : teste Apache <strong>et</strong> PHP <strong>et</strong> la base</td>
+</tr>
+<tr>
+<td><code>http-check expect status 200-399</code></td>
+<td>Un <code>302</code> (redirection) est sain ; un <code>500</code> ou <code>503</code> ne l'est pas</td>
+</tr>
+<tr>
+<td><code>cookie SRV_WP insert indirect nocache httponly</code></td>
+<td>HAProxy pose un cookie indiquant le serveur : un administrateur connecté reste sur le même serveur</td>
+</tr>
+<tr>
+<td><code>X-Served-By %[srv_name]</code></td>
+<td>Indique quel serveur a répondu : rend le failover <strong>visible</strong></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="pourquoi-un-health-check-sur-wp-loginphp">Pourquoi un health-check sur <code>/wp-login.php</code> ?</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Check</th>
+<th>Détecte Apache arrêté</th>
+<th>Détecte PHP cassé</th>
+<th>Détecte base inaccessible</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TCP simple (<code>check</code> seul)</td>
+<td>Oui</td>
+<td>Non</td>
+<td>Non</td>
+</tr>
+<tr>
+<td>HTTP sur <code>/</code></td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Partiellement (selon cache)</td>
+</tr>
+<tr>
+<td>HTTP sur <code>/wp-login.php</code></td>
+<td>Oui</td>
+<td>Oui</td>
+<td>Oui (WordPress interroge la base)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="persistance-de-session">Persistance de session</h3>
+<p>Sans persistance, un utilisateur connecté à <code>wp-admin</code> alterne entre web-01 et web-02. Comme les <strong>clés et sels</strong> de <code>wp-config.php</code> sont identiques sur les deux serveurs, la session reste valide ; la persistance n'est donc pas strictement nécessaire pour WordPress, mais elle :</p>
+<ul>
+<li>évite des incohérences pendant une synchronisation de fichiers ;</li>
+<li>facilite le diagnostic (un utilisateur = un serveur).</li>
+</ul>
+<p>Si le serveur du cookie tombe, <code>option redispatch</code> envoie le client sur l'autre serveur.</p>
+<h3 id="verification_1">Vérification</h3>
+<pre><code class="language-bash"># SUR adm-01 — sans cookie : alternance
+for i in 1 2 3 4; do curl -sI http://10.0.10.2 | grep -i x-served-by; done
+
+# Avec cookie : persistance
+curl -s -c /tmp/cj -o /dev/null http://10.0.10.2/
+for i in 1 2 3; do curl -s -b /tmp/cj -o /dev/null -D - http://10.0.10.2/ | grep -i x-served-by; done
+</code></pre>
+<p>Tests associés : T13 (<a href="/procedure?id=plan-de-tests">Plan-de-tests.md</a>), T14 à T16 (<a href="/procedure?id=plan-de-tests">Plan-de-tests.md</a>).</p>
+<hr />
+<h2 id="haproxy-publication-de-glpi">HAProxy — Publication de GLPI</h2>
+<h3 id="configuration_2">Configuration</h3>
+<pre><code class="language-haproxy">frontend fe_glpi
+    bind 10.0.10.2:8080
+    option forwardfor
+    http-request set-header X-Forwarded-Proto http
+    default_backend be_glpi
+
+backend be_glpi
+    option httpchk
+    http-check send meth GET uri / ver HTTP/1.1 hdr Host 10.0.10.3
+    http-check expect status 200-399
+    http-response set-header X-Served-By %[srv_name]
+    server glpi 10.0.10.3:80 check inter 5s fall 3 rise 2
+</code></pre>
+<h3 id="pourquoi-publier-glpi-via-haproxy-alors-quil-ny-a-quun-serveur">Pourquoi publier GLPI via HAProxy alors qu'il n'y a qu'un serveur ?</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Raison</th>
+<th>Explication</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Point d'entrée unique</td>
+<td>Utilisateurs et règles pfSense ne connaissent que <code>10.0.10.2</code></td>
+</tr>
+<tr>
+<td>Évolutivité</td>
+<td>Ajouter un GLPI-02 = ajouter une ligne <code>server</code>, sans toucher aux clients</td>
+</tr>
+<tr>
+<td>Visibilité</td>
+<td>État de GLPI visible dans la page de statistiques</td>
+</tr>
+<tr>
+<td>Sécurité</td>
+<td>vUSER n'a besoin d'aucun accès direct à glpi</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="pourquoi-le-port-8080">Pourquoi le port 8080 ?</h3>
+<p>Le port 80 de HAProxy est déjà utilisé par WordPress. Deux solutions :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Solution</th>
+<th>Configuration</th>
+<th>Choix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Port distinct</td>
+<td><code>bind 10.0.10.2:8080</code></td>
+<td><strong>Retenu</strong> : simple, sans DNS</td>
+</tr>
+<tr>
+<td>Même port, routage par nom d'hôte</td>
+<td><code>acl is_glpi hdr(host) -i glpi.lab.local</code> + <code>use_backend be_glpi if is_glpi</code></td>
+<td>Nécessite un DNS interne (amélioration future)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="verification_2">Vérification</h3>
+<pre><code class="language-bash"># SUR adm-01
+./scripts/validation/check-glpi.sh
+curl -sI http://10.0.10.2:8080/ | grep -Ei 'HTTP/|X-Served-By'
+</code></pre>
+<p>Configuration côté GLPI : <a href="/procedure?id=mo-04-glpi">MO-4-GLPI.md</a></p>
+<hr />
+<h2 id="haproxy-repartition-sql">HAProxy — Répartition SQL</h2>
+<h3 id="configuration_3">Configuration</h3>
+<pre><code class="language-haproxy">listen galera_cluster
+    bind 10.0.10.2:3306
+    mode tcp
+    option tcplog
+    balance roundrobin
+    option mysql-check user haproxy_check post-41
+    timeout client 30m
+    timeout server 30m
+    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
+    server bdd-01 10.0.20.1:3306 check
+    server bdd-02 10.0.20.2:3306 check
+    server bdd-03 10.0.20.3:3306 check
+</code></pre>
+<h3 id="explication_1">Explication</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Directive</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mode tcp</code></td>
+<td>HAProxy relaie les octets sans comprendre le protocole MySQL (couche 4)</td>
+</tr>
+<tr>
+<td><code>balance roundrobin</code></td>
+<td>Chaque <strong>nouvelle connexion</strong> va au nœud suivant. Une connexion ouverte reste sur son nœud</td>
+</tr>
+<tr>
+<td><code>option mysql-check user haproxy_check post-41</code></td>
+<td>Le health-check ouvre une vraie session MySQL (handshake + authentification)</td>
+</tr>
+<tr>
+<td><code>timeout client/server 30m</code></td>
+<td>Les connexions SQL peuvent rester inactives longtemps (pools, sessions GLPI)</td>
+</tr>
+<tr>
+<td><code>on-marked-down shutdown-sessions</code></td>
+<td>Quand un nœud est déclaré DOWN, ses sessions sont coupées : les clients se reconnectent ailleurs</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="pourquoi-passer-par-haproxy-plutot-quun-nud">Pourquoi passer par HAProxy plutôt qu'un nœud ?</h3>
+<ul>
+<li>WordPress et GLPI n'acceptent <strong>qu'une seule adresse</strong> de serveur SQL.</li>
+<li>Si cette adresse était <code>10.0.20.1</code>, la panne de bdd-01 couperait les applications malgré les deux autres nœuds.</li>
+<li>HAProxy fournit une adresse <strong>stable</strong> (<code>10.0.10.2:3306</code>) et écarte automatiquement un nœud en panne.</li>
+</ul>
+<h3 id="round-robin-ou-ecrivain-unique">Round-robin ou écrivain unique ?</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Configuration</th>
+<th>Avantage</th>
+<th>Inconvénient</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Round-robin</strong> (lab)</td>
+<td>3 serveurs actifs</td>
+<td>Démontre le multi-maître ; charge répartie</td>
+<td>Deux écritures concurrentes sur la même ligne via deux nœuds → conflit de certification (<code>Deadlock</code>)</td>
+</tr>
+<tr>
+<td><strong>Écrivain unique</strong> (production)</td>
+<td>1 actif + 2 <code>backup</code></td>
+<td>Aucun conflit de certification</td>
+<td>Un seul nœud travaille ; les autres attendent</td>
+</tr>
+</tbody>
+</table></div>
+<p>Le round-robin est conservé dans le lab pour sa valeur démonstrative (<code>test-sql-round-robin.sh</code>). Avec la charge très faible de WordPress et GLPI en lab, les conflits sont improbables. En production, la variante commentée dans <code>haproxy.cfg.example</code> (dépôt GitHub) serait préférable.</p>
+<h3 id="ip-source-et-comptes-sql">IP source et comptes SQL</h3>
+<p>HAProxy étant un proxy TCP, MariaDB voit toutes les connexions provenir de <strong>10.0.10.2</strong>. Les comptes applicatifs sont donc déclarés pour cet hôte :</p>
+<pre><code class="language-sql">-- SUR bdd-01
+CREATE USER 'wordpress'@'10.0.10.2' IDENTIFIED BY '&lt;PASSWORD&gt;';
+CREATE USER 'glpi'@'10.0.10.2'      IDENTIFIED BY '&lt;PASSWORD&gt;';
+</code></pre>
+<p>Conséquence de sécurité : MariaDB ne peut plus distinguer web-01 de glpi. Le filtrage par source est assuré <strong>en amont</strong> (pfSense : seul vWEB et vADMIN atteignent <code>10.0.10.2:3306</code>).</p>
+<h3 id="verification_3">Vérification</h3>
+<pre><code class="language-bash"># SUR haproxy
+./scripts/utilities/test-sql-round-robin.sh -n 9
+</code></pre>
+<pre><code class="language-text">  connexion  1 -&gt; mysql01
+  connexion  2 -&gt; mysql02
+  connexion  3 -&gt; mysql03
+  ...
+[OK]   3 nœuds distincts ont répondu (round-robin effectif)
+</code></pre>
+<p>(Format de sortie illustratif ; le résultat réel est consigné dans la matrice, test T10.)</p>

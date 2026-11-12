@@ -1,0 +1,41 @@
+<p>Pare-feu et routeur : installation, VLAN, règles, NAT et VPN OpenVPN.</p>
+<h2 id="1-prerequis">1. Prérequis</h2>
+<ul>
+<li>Une VM (Proxmox, VirtualBox, VMware) avec <strong>2 cartes réseau</strong> : WAN (vers Internet) et LAN (réseau interne).</li>
+<li>1 vCPU, 1 à 2 Go de RAM, 16 Go de disque. ISO téléchargée sur <code>pfsense.org</code>.</li>
+</ul>
+<h2 id="2-installation">2. Installation</h2>
+<ol>
+<li>Démarrer sur l'ISO → <em>Install</em> → partitionnement <strong>Auto (ZFS)</strong> → redémarrer.</li>
+<li>À la console : « Should VLANs be set up now? » → <code>n</code> (on les fera plus tard).</li>
+<li>Assigner les interfaces : WAN = <code>vtnet0</code> / <code>em0</code>, LAN = <code>vtnet1</code> / <code>em1</code>.</li>
+<li>Option <code>2</code> du menu console → définir l'IP du LAN (ex : <code>192.168.10.1/24</code>) et activer le DHCP.</li>
+</ol>
+<h2 id="3-interface-web">3. Interface web</h2>
+<ol>
+<li>Depuis un poste du LAN : <code>https://192.168.10.1</code> — identifiants par défaut <code>admin</code> / <code>pfsense</code>.</li>
+<li>Suivre l'assistant : nom d'hôte, DNS, fuseau horaire, <strong>changer le mot de passe admin</strong>.</li>
+</ol>
+<h2 id="4-creer-des-vlan">4. Créer des VLAN</h2>
+<ol>
+<li><em>Interfaces → Assignments → VLANs → Add</em> : interface parent = LAN, tag = <code>10</code>, <code>20</code>…</li>
+<li><em>Interface Assignments</em> : ajouter chaque VLAN, l'activer, lui donner une IP (ex : <code>10.0.10.1/24</code>).</li>
+<li><em>Services → DHCP Server</em> : activer le DHCP sur chaque VLAN.</li>
+</ol>
+<h2 id="5-regles-de-pare-feu">5. Règles de pare-feu</h2>
+<ul>
+<li><em>Firewall → Rules</em> : les règles sont lues <strong>de haut en bas</strong>, la première qui correspond s'applique.</li>
+<li>Par défaut tout est bloqué sur une nouvelle interface : ajouter une règle <em>Pass</em> explicite.</li>
+<li>Exemple : bloquer VLAN Invités → LAN, puis autoriser Invités → any (Internet).</li>
+</ul>
+<h2 id="6-redirection-de-port-nat">6. Redirection de port (NAT)</h2>
+<p><em>Firewall → NAT → Port Forward → Add</em> : interface WAN, port <code>443</code> → IP du serveur en DMZ, port <code>443</code>. La règle de pare-feu associée est créée automatiquement.</p>
+<h2 id="7-vpn-openvpn-acces-distant">7. VPN OpenVPN (accès distant)</h2>
+<ol>
+<li><em>System → Cert Manager</em> : créer une CA puis un certificat serveur.</li>
+<li><em>VPN → OpenVPN → Wizards</em> : suivre l'assistant (authentification locale).</li>
+<li><em>System → Package Manager</em> : installer <code>openvpn-client-export</code> pour générer les fichiers clients.</li>
+</ol>
+<blockquote>
+<p>💡 Toujours faire une sauvegarde : <em>Diagnostics → Backup &amp; Restore</em> avant une grosse modification.</p>
+</blockquote>

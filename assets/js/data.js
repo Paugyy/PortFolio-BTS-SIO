@@ -179,7 +179,8 @@ const PROJECTS_ECOLE = [
     ],
     tags: ["HAProxy", "MariaDB Galera", "pfSense", "VLAN", "WordPress", "GLPI", "Zabbix", "Rsyslog", "Debian", "Proxmox"],
     links: [
-      { href: "/projet-ha", label: "Fiche complète et procédures" },
+      { href: "/projet-ha", label: "Fiche complète" },
+      { href: "/procedures", label: "Procédures (PDF et Markdown)" },
       { href: "/infra", label: "Schéma interactif" },
       { href: "https://github.com/Paugyy/bts-sio-ha-infrastructure", label: "Dépôt GitHub" },
     ],
@@ -230,6 +231,7 @@ const PROJECTS_ECOLE = [
     ],
     skills: ["Gérer le patrimoine informatique", "Répondre aux incidents et aux demandes d'assistance"],
     tags: ["Proxmox VE", "Debian", "SSH", "Git"],
+    links: [{ href: "/procedure?id=guide-proxmox-vm", label: "Procédure : créer une VM sur Proxmox" }],
     link: "",
   },
   {
@@ -244,6 +246,7 @@ const PROJECTS_ECOLE = [
     tasks: ["Installation de pfSense (WAN / LAN / DMZ)", "Création de VLAN et de règles de pare-feu", "Configuration DHCP et NAT (redirection de port)", "Tests de connectivité et de filtrage"],
     skills: ["Gérer le patrimoine informatique", "Sécuriser les équipements et les usages"],
     tags: ["pfSense", "VLAN", "NAT", "DHCP"],
+    links: [{ href: "/procedure?id=guide-pfsense", label: "Procédure pfSense" }],
     link: "",
   },
   {
@@ -258,6 +261,7 @@ const PROJECTS_ECOLE = [
     tasks: ["Déploiement de Guacamole avec Docker (guacd + guacamole + base de données)", "Création des connexions RDP et SSH", "Gestion des utilisateurs et des droits", "Mise derrière un reverse proxy HTTPS"],
     skills: ["Mettre à disposition des utilisateurs un service informatique", "Sécuriser les équipements et les usages"],
     tags: ["Guacamole", "Docker", "RDP", "SSH"],
+    links: [{ href: "/procedure?id=guide-guacamole-docker", label: "Procédure Guacamole" }],
     link: "",
   },
   {
@@ -272,6 +276,7 @@ const PROJECTS_ECOLE = [
     tasks: ["Promotion du serveur en contrôleur de domaine", "Création des OU, utilisateurs et groupes", "GPO : fond d'écran, lecteurs réseau, restrictions", "Jonction des postes clients au domaine"],
     skills: ["Gérer le patrimoine informatique", "Organiser son développement professionnel"],
     tags: ["Windows Server", "AD DS", "DNS", "GPO"],
+    links: [{ href: "/procedure?id=guide-active-directory", label: "Procédure Active Directory" }],
     link: "",
   },
   {
@@ -286,6 +291,7 @@ const PROJECTS_ECOLE = [
     tasks: ["Installation LAMP + GLPI", "Déploiement de l'agent GLPI", "Création de catégories et traitement de tickets"],
     skills: ["Répondre aux incidents et aux demandes d'assistance"],
     tags: ["GLPI", "Linux", "Apache", "MariaDB"],
+    links: [{ href: "/procedure?id=guide-glpi-lamp", label: "Procédure GLPI" }],
     link: "",
   },
   {

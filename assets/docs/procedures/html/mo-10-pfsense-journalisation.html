@@ -1,0 +1,394 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 06/11/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+<p>Mode opératoire rédigé le 06/11/2026. VM concernée : fiche fw-01. Règles complètes : matrice de flux. Côté serveur : <a href="/procedure?id=mo-09-rsyslog-loganalyzer">MO-9</a>.
+L'export de configuration pfSense contient des <strong>secrets</strong> (comptes, empreintes de mots de passe) : il ne va <strong>ni dans Git, ni dans le dossier remis</strong>. Seule sa version assainie (tableaux ci-dessous) est publiée.</p>
+</blockquote>
+<p><strong>Légende :</strong> ✅ <strong>fait et testé</strong> · 🟨 <strong>proposé, non testé</strong> (ou à confirmer) · ⬜ <strong>à faire</strong></p>
+<h2 id="1-pourquoi-et-ou-on-en-est">1. Pourquoi, et où on en est</h2>
+<p>Le matin du 06/11, <code>http://10.4.0.198:2233/</code> ne répondait pas. L'export pfSense de 07:38 (<code>config-pfSense.home.arpa-20261106073806</code>) en donne la cause : <strong>ni redirection NAT 2233 ni règle WAN vers <code>10.0.30.3:8085</code></strong> (INC-04). Les serveurs des zones WEB et BDD ne pouvaient pas non plus joindre le collecteur : leurs blocages d'isolement vers vADMIN arrêtent le port 514.</p>
+<p>Un fichier corrigé a été préparé, puis le transfert a été mis en place. <strong>Dans la journée, les deux flux fonctionnent</strong> :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Flux</th>
+<th>Preuve</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>WAN:2233</code> → <code>10.0.30.3:8085</code> depuis le poste <code>10.2.0.122</code></td>
+<td>Interface LogAnalyzer ouverte dans Chrome</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>vWEB (4 serveurs) et vBDD (3 nœuds) → <code>10.0.30.3:514/TCP</code></td>
+<td>Tests directs et automatiques reçus des 7 machines (<a href="/procedure?id=mo-09-rsyslog-loganalyzer">MO-9 §4</a>)</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>Contenu <strong>exact</strong> des règles actives (fichier corrigé importé tel quel, ou saisie à la main ?)</td>
+<td>Aucun export pris <strong>après</strong> la modification</td>
+<td>🟨 à relire (§3)</td>
+</tr>
+<tr>
+<td>Journaux de pfSense lui-même</td>
+<td>Non configurés</td>
+<td>⬜ (§5)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="2-configuration-cible-fichier-corrige">2. Configuration cible (fichier corrigé)</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th></th>
+<th>Export de 07:38</th>
+<th>Fichier corrigé</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Redirections NAT</td>
+<td>14 (dont 8083 désactivée)</td>
+<td><strong>15</strong> (+ 2233)</td>
+</tr>
+<tr>
+<td>Règles de filtrage</td>
+<td>72</td>
+<td><strong>75</strong> (+ 1 WAN, + 1 vWEB, + 1 vBDD)</td>
+</tr>
+<tr>
+<td>Alias</td>
+<td>2 (<code>HAPROXY_WEB</code>, <code>AD_DC_PORTS</code>)</td>
+<td><strong>5</strong> (+ 3)</td>
+</tr>
+<tr>
+<td>Règle WAN « HTTP vers WEB-02 »</td>
+<td>active alors que son NAT 8083 est désactivé</td>
+<td><strong>désactivée</strong> (pas supprimée)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Rien d'autre ne change : mêmes 14 NAT, mêmes ports Zabbix (2231, 2232), même IP <code>10.0.30.3</code>, <code>DEFAULT-DENY</code> toujours <strong>dernière</strong> règle de chaque interface.</p>
+<p><strong>Alias</strong> (<em>Firewall / Aliases</em>) :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Nom</th>
+<th>Type</th>
+<th>Contenu</th>
+<th>Remarque</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>LOGANALYZER_ADMIN_NETS</code></td>
+<td>Réseaux</td>
+<td><code>10.2.0.0/24</code>, <code>10.4.0.0/24</code></td>
+<td>Contient le poste <code>10.2.0.122</code> du 06/11 ; à réduire aux seuls réseaux d'administration réellement utilisés</td>
+</tr>
+<tr>
+<td><code>SYSLOG_WEB_SENDERS</code></td>
+<td>Hôtes</td>
+<td><code>10.0.10.1</code>, <code>10.0.10.2</code>, <code>10.0.10.3</code>, <code>10.0.10.4</code></td>
+<td>WEB-01, HAProxy, GLPI-01, WEB-02</td>
+</tr>
+<tr>
+<td><code>SYSLOG_BDD_SENDERS</code></td>
+<td>Hôtes</td>
+<td><code>10.0.20.1</code>, <code>10.0.20.2</code>, <code>10.0.20.3</code></td>
+<td>Les 3 nœuds Galera</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Redirection NAT</strong> (<em>Firewall / NAT / Port Forward</em>) :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Interface</th>
+<th>Proto</th>
+<th>Source</th>
+<th>Destination</th>
+<th>Port WAN</th>
+<th>Redirige vers</th>
+<th>Règle associée</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WAN</td>
+<td>TCP</td>
+<td><code>LOGANALYZER_ADMIN_NETS</code></td>
+<td>WAN address</td>
+<td><strong>2233</strong></td>
+<td><code>10.0.30.3:8085</code></td>
+<td>règle WAN liée</td>
+<td>✅ flux · 🟨 source exacte à relire</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Règles</strong> (<em>Firewall / Rules</em>), position comprise :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Onglet</th>
+<th>Position</th>
+<th>Action</th>
+<th>Proto</th>
+<th>Source</th>
+<th>Destination</th>
+<th>Pourquoi à cet endroit</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>WAN</td>
+<td>6, après le PASS Zabbix 80</td>
+<td>PASS</td>
+<td>TCP</td>
+<td><code>LOGANALYZER_ADMIN_NETS</code></td>
+<td><code>10.0.30.3:8085</code></td>
+<td><strong>Au-dessus</strong> de <code>DEFAULT-DENY</code> (dernière)</td>
+<td>✅ flux · 🟨 position</td>
+</tr>
+<tr>
+<td>vWEB</td>
+<td><strong>2</strong>, juste après HAProxy → Galera 3306</td>
+<td>PASS</td>
+<td>TCP</td>
+<td><code>SYSLOG_WEB_SENDERS</code></td>
+<td><code>10.0.30.3:514</code></td>
+<td><strong>Au-dessus</strong> du <code>BLOCK vWEB → vADMIN</code></td>
+<td>✅ flux · 🟨 position</td>
+</tr>
+<tr>
+<td>vBDD</td>
+<td><strong>1</strong></td>
+<td>PASS</td>
+<td>TCP</td>
+<td><code>SYSLOG_BDD_SENDERS</code></td>
+<td><code>10.0.30.3:514</code></td>
+<td><strong>Au-dessus</strong> du <code>BLOCK vBDD → vADMIN</code></td>
+<td>✅ flux · 🟨 position</td>
+</tr>
+<tr>
+<td>WAN</td>
+<td>4</td>
+<td><strong>désactivée</strong></td>
+<td>TCP</td>
+<td>any</td>
+<td><code>10.0.10.4:80</code></td>
+<td>Reste d'un NAT 8083 désactivé ; ne pas réactiver</td>
+<td>🟨</td>
+</tr>
+<tr>
+<td>vADMIN</td>
+<td>—</td>
+<td>aucune</td>
+<td>—</td>
+<td><code>10.0.30.2</code> (guacamol)</td>
+<td><code>10.0.30.3:514</code></td>
+<td>Même VLAN : le trafic ne passe pas par le filtrage</td>
+<td>✅ (guacamol reçu)</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><strong>Rappel</strong> — Aucun NAT sur 514 (TCP/UDP), 10050, 10051, 3306 ni UDP 161 : ces ports ne sortent jamais du labo.</p>
+</blockquote>
+<h2 id="3-relire-la-configuration-active-a-faire-en-premier">3. Relire la configuration active (à faire en premier)</h2>
+<p>Un navigateur qui s'ouvre prouve qu'un chemin existe, <strong>pas</strong> que toutes les règles sont celles prévues.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Action</th>
+<th>Où</th>
+<th>Attendu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Exporter la configuration du jour</td>
+<td><em>Diagnostics / Backup &amp; Restore / Download configuration as XML</em> — fichier rangé <strong>hors de Git</strong></td>
+<td>—</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Compter NAT et règles</td>
+<td><em>Firewall / NAT</em> et <em>Firewall / Rules</em> (5 onglets)</td>
+<td>15 NAT, 75 règles si le fichier corrigé a été importé tel quel</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Vérifier l'ordre</td>
+<td>Onglets vWEB et vBDD</td>
+<td>PASS 514 <strong>au-dessus</strong> des <code>ISOLATION</code>, <code>DEFAULT-DENY</code> en dernier partout</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Vérifier la source du NAT 2233</td>
+<td><em>Firewall / NAT</em>, ligne 2233</td>
+<td>Alias limité aux réseaux d'administration, <strong>jamais</strong> <code>any</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td>Mettre à jour la matrice de flux</td>
+<td>—</td>
+<td>Colonne État passée de 🟨 à ✅</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Captures 23 et 24</td>
+<td>NAT 2233 ; règles vWEB et vBDD</td>
+<td>Rangées dans <code>captures/</code></td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="4-reconstruire-ces-flux-si-besoin">4. Reconstruire ces flux (si besoin)</h2>
+<p><strong>Avant :</strong> sauvegarder la configuration (§3-1), avoir la console Proxmox de <code>sio2527-fw-01-ypaugy</code> (VMID 610), relever l'adresse du poste (<code>ipconfig</code>), adapter la liste d'adresses Apache (<a href="/procedure?id=mo-09-rsyslog-loganalyzer">MO-9 §2</a>) — sinon le NAT fonctionne mais Apache répond <code>403</code>.</p>
+<p><strong>Option A — saisie dans l'interface (recommandée)</strong> : pas de redémarrage, chaque ajout est traçable. Créer les 3 alias, le NAT 2233 (<em>Filter rule association : Add associated filter rule</em>), les 2 règles Syslog <strong>glissées à leur position</strong> (§2), puis désactiver la règle WAN vers <code>10.0.10.4:80</code>. <em>Apply Changes</em>.</p>
+<p><strong>Option B — restauration du fichier corrigé</strong> : <em>Diagnostics / Backup &amp; Restore / Restore Backup</em>, zone <em>All</em>. pfSense redémarre, tout le labo est coupé quelques minutes. Seulement si aucune modification n'a été faite depuis l'export de 07:38 : sinon elle serait effacée.</p>
+<h2 id="5-envoi-des-journaux-de-pfsense-a-faire">5. Envoi des journaux de pfSense (à faire)</h2>
+<p>Ce réglage <strong>n'est pas dans le fichier XML</strong> : il se fait à la main.</p>
+<p><strong>SUR sio2527-fw-01-ypaugy — interface web</strong> → <em>Status / System Logs / Settings</em>, rubrique <em>Remote Logging Options</em> (intitulés à vérifier sur la version 2.7.0) :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Champ</th>
+<th>Valeur</th>
+<th>Pourquoi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Send log messages to remote syslog server</td>
+<td>coché</td>
+<td>Active l'envoi</td>
+</tr>
+<tr>
+<td>Source Address</td>
+<td>interface <strong>vADMIN</strong></td>
+<td>Les messages partent de <code>10.0.30.254</code>, dans la zone du collecteur</td>
+</tr>
+<tr>
+<td>IP Protocol</td>
+<td>IPv4</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Remote log servers</td>
+<td><code>10.0.30.3:514</code></td>
+<td>Collecteur Rsyslog (UDP)</td>
+</tr>
+<tr>
+<td>Remote Syslog Contents</td>
+<td><em>System Events</em>, <em>Firewall Events</em>, <em>General Authentication Events</em> au minimum</td>
+<td>Ce qui sert à l'analyse d'un incident</td>
+</tr>
+</tbody>
+</table></div>
+<p>Aucune règle ni NAT à créer : c'est le pare-feu lui-même qui émet. Contrôle <strong>SUR 10.0.30.3</strong> : <code>sudo grep -i 'filterlog\|pfSense' /var/log/remote-syslog/central.log | tail</code>, puis l'hôte pfSense dans LogAnalyzer. <strong>À ne pas déclarer actif avant cette preuve.</strong></p>
+<h2 id="6-retour-arriere">6. Retour arrière</h2>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Situation</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Interface web pfSense accessible</td>
+<td><em>Diagnostics / Backup &amp; Restore / Restore Backup</em>, zone <em>All</em>, fichier sauvegardé avant la modification → redémarrage</td>
+</tr>
+<tr>
+<td>Interface web perdue</td>
+<td>Console Proxmox de fw-01 → menu console, <em>Restore recent configuration</em>, puis restaurer la sauvegarde</td>
+</tr>
+<tr>
+<td>Un seul ajout pose problème</td>
+<td>Le désactiver (case <em>Disable</em>), <em>Apply Changes</em></td>
+</tr>
+<tr>
+<td>Côté Apache</td>
+<td>Remettre l'ancienne liste <code>Require</code> (<a href="/procedure?id=mo-09-rsyslog-loganalyzer">MO-9</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="7-recette">7. Recette</h2>
+<p>Noter pour chaque test : date, heure, <strong>adresse IP source exacte du poste</strong>, résultat, capture. Tests T21 à T35 du <a href="/procedure?id=plan-de-tests">plan de tests</a>.</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>#</th>
+<th>Test</th>
+<th>Depuis</th>
+<th>Commande</th>
+<th>Attendu</th>
+<th>État</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>Zabbix toujours publié</td>
+<td>Poste admin</td>
+<td><code>http://10.4.0.198:2231/zabbix/</code></td>
+<td>page de connexion</td>
+<td>✅ en local (<code>200</code>) · ⬜ depuis le poste</td>
+</tr>
+<tr>
+<td>2</td>
+<td>SSH Zabbix toujours publié</td>
+<td>Poste admin</td>
+<td><code>Test-NetConnection 10.4.0.198 -Port 2232</code></td>
+<td><code>True</code></td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>3</td>
+<td>LogAnalyzer joignable</td>
+<td>Poste <code>10.2.0.122</code></td>
+<td>Chrome <code>http://10.4.0.198:2233/</code></td>
+<td><code>401</code>, puis interface</td>
+<td>✅</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Journaux de vWEB et vBDD</td>
+<td>7 serveurs</td>
+<td><code>logger -n 10.0.30.3 -P 514 -T …</code></td>
+<td>lignes dans <code>central.log</code></td>
+<td>✅</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Événements pfSense</td>
+<td>fw-01</td>
+<td>réglage §5, puis une connexion à l'interface</td>
+<td>lignes <code>filterlog</code> ou d'authentification</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Source non autorisée bloquée</td>
+<td>cli-01 (10.0.40.1)</td>
+<td><code>Test-NetConnection 10.0.30.3 -Port 514</code></td>
+<td><code>False</code>, refus journalisé</td>
+<td>⬜</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>BLOCK ALL</code> en bas de chaque interface</td>
+<td>pfSense</td>
+<td><em>Firewall / Rules</em>, 5 onglets</td>
+<td><code>DEFAULT-DENY</code> en dernier partout</td>
+<td>⬜</td>
+</tr>
+</tbody>
+</table></div>

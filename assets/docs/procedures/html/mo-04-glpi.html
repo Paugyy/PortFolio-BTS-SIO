@@ -1,0 +1,254 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 10/10/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Installation, Apache, base de données et publication derrière HAProxy.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+<p>⚠️ <strong>Écarts avec le labo réel</strong> (configuration relevée le 01/10/2026, voir le DAT §7.2) :
+HAProxy contrôle ses serveurs <strong>toutes les 2 s</strong> (<code>inter 2s fall 3 rise 2</code>), le contrôle SQL est un simple
+test de port (<code>tcp-check</code>, pas <code>mysql-check</code>), et il n'y a <strong>ni page de statistiques (8404) ni en-tête
+<code>X-Served-By</code></strong> : les passages qui les citent décrivent une cible, pas l'existant. adm-01 est le contrôleur
+de domaine Windows : les commandes notées « sur adm-01 » se jouent depuis une session du bastion Guacamole.</p>
+</blockquote>
+<hr />
+<h2 id="glpi-installation">GLPI — Installation</h2>
+<h3 id="fiche">Fiche</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Élément</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VM</td>
+<td>glpi</td>
+</tr>
+<tr>
+<td>IP</td>
+<td>10.0.10.3/24, passerelle 10.0.10.254</td>
+</tr>
+<tr>
+<td>VLAN</td>
+<td>301 — vWEB</td>
+</tr>
+<tr>
+<td>OS</td>
+<td>Debian 12</td>
+</tr>
+<tr>
+<td>Logiciels</td>
+<td>Apache 2.4, PHP 8.2, GLPI 10.x</td>
+</tr>
+<tr>
+<td>Racine</td>
+<td><code>/var/www/glpi</code> — <strong>DocumentRoot</strong> <code>/var/www/glpi/public</code></td>
+</tr>
+<tr>
+<td>Base</td>
+<td><code>glpi</code> via <code>10.0.10.2:3306</code> (HAProxy → Galera)</td>
+</tr>
+<tr>
+<td>Publication</td>
+<td><code>http://10.0.10.2:8080/</code></td>
+</tr>
+<tr>
+<td>Redondance</td>
+<td><strong>Aucune</strong> (SPOF assumé, voir DAT-Infrastructure.md)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="1-dependances">1. Dépendances</h3>
+<p><strong>SUR glpi</strong></p>
+<pre><code class="language-bash">sudo ./scripts/install/install-glpi-deps.sh            # simulation
+sudo ./scripts/install/install-glpi-deps.sh --apply
+</code></pre>
+<h3 id="2-telechargement-de-glpi">2. Téléchargement de GLPI</h3>
+<p>Récupérer l'archive de la <strong>dernière version stable 10.x</strong> sur la page officielle des releases (<code>github.com/glpi-project/glpi/releases</code>) et noter son empreinte publiée.</p>
+<p><strong>SUR glpi</strong></p>
+<pre><code class="language-bash">cd /tmp
+wget https://github.com/glpi-project/glpi/releases/download/&lt;VERSION&gt;/glpi-&lt;VERSION&gt;.tgz
+sha256sum glpi-&lt;VERSION&gt;.tgz          # comparer avec l'empreinte publiée
+sudo tar -xzf glpi-&lt;VERSION&gt;.tgz -C /var/www/
+sudo chown -R www-data:www-data /var/www/glpi
+</code></pre>
+<h3 id="3-base-de-donnees">3. Base de données</h3>
+<p>Voir database.md : base <code>glpi</code>, compte <code>glpi</code>@<code>10.0.10.2</code>.</p>
+<h3 id="4-apache">4. Apache</h3>
+<p>Voir apache.md : vhost avec <code>DocumentRoot /var/www/glpi/public</code> et réécritures.</p>
+<h3 id="5-assistant-dinstallation">5. Assistant d'installation</h3>
+<p><strong>SUR adm-01</strong> (navigateur) : <code>http://10.0.10.3/</code></p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Écran</th>
+<th>Valeur</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Serveur SQL</td>
+<td><code>10.0.10.2</code> (HAProxy) — port 3306 par défaut</td>
+</tr>
+<tr>
+<td>Utilisateur SQL</td>
+<td><code>glpi</code></td>
+</tr>
+<tr>
+<td>Mot de passe SQL</td>
+<td><code>&lt;PASSWORD&gt;</code></td>
+</tr>
+<tr>
+<td>Base</td>
+<td><code>glpi</code> (existante)</td>
+</tr>
+</tbody>
+</table></div>
+<p>L'assistant vérifie les prérequis PHP : tout doit être vert (les avertissements de sécurité sont traités ci-dessous).</p>
+<h3 id="6-apres-linstallation-obligatoire">6. Après l'installation (obligatoire)</h3>
+<p><strong>SUR adm-01</strong> (interface GLPI)</p>
+<ul>
+<li>Changer les mots de passe des comptes par défaut <code>glpi</code>, <code>tech</code>, <code>normal</code>, <code>post-only</code> (ou désactiver ceux qui sont inutiles).</li>
+</ul>
+<p><strong>SUR glpi</strong></p>
+<pre><code class="language-bash">sudo rm /var/www/glpi/install/install.php
+</code></pre>
+<h3 id="7-verification">7. Vérification</h3>
+<pre><code class="language-bash"># SUR adm-01
+./scripts/validation/check-glpi.sh
+</code></pre>
+<p>Capture attendue : <code>evidence/screenshots/10-glpi.png</code></p>
+<hr />
+<h2 id="glpi-apache">GLPI — Apache</h2>
+<p>Configuration : <code>configs/apache/glpi.conf.example</code> (dépôt GitHub)</p>
+<h3 id="deploiement">Déploiement</h3>
+<p><strong>SUR glpi</strong></p>
+<pre><code class="language-bash">sudo a2enmod rewrite remoteip
+sudo cp configs/apache/glpi.conf.example /etc/apache2/sites-available/glpi.conf
+sudo a2ensite glpi
+sudo a2dissite 000-default
+sudo apachectl configtest
+sudo systemctl reload apache2
+</code></pre>
+<h3 id="pourquoi-documentroot-varwwwglpipublic">Pourquoi <code>DocumentRoot /var/www/glpi/public</code> ?</h3>
+<p>Depuis GLPI 10.0.7, seul le dossier <code>public/</code> doit être exposé. Les dossiers <code>config/</code> (identifiants SQL), <code>files/</code> (documents joints) et <code>vendor/</code> restent <strong>hors</strong> de la racine web : ils ne peuvent pas être téléchargés par URL.</p>
+<h3 id="pourquoi-des-regles-de-reecriture">Pourquoi des règles de réécriture ?</h3>
+<p>Toutes les pages de GLPI 10 passent par un <strong>routeur</strong> unique (<code>public/index.php</code>). Une URL comme <code>/front/ticket.php</code> ne correspond à aucun fichier dans <code>public/</code> : sans réécriture, Apache renvoie <strong>404</strong>.</p>
+<pre><code class="language-apache">&lt;Directory /var/www/glpi/public&gt;
+    Require all granted
+    RewriteEngine On
+    RewriteCond %{HTTP:Authorization} ^(.+)$
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteRule ^(.*)$ index.php [QSA,L]
+&lt;/Directory&gt;
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Ligne</th>
+<th>Rôle</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RewriteCond %{REQUEST_FILENAME} !-f</code></td>
+<td>Si le fichier demandé n'existe pas réellement…</td>
+</tr>
+<tr>
+<td><code>RewriteRule ^(.*)$ index.php [QSA,L]</code></td>
+<td>…transmettre la requête au routeur, en conservant la query string (<code>QSA</code>)</td>
+</tr>
+<tr>
+<td>Règle <code>HTTP_AUTHORIZATION</code></td>
+<td>Transmet l'en-tête d'authentification à PHP (API REST)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Ces règles doivent être <strong>dans le bloc <code>&lt;Directory&gt;</code></strong> : <code>%{REQUEST_FILENAME}</code> n'y contient le chemin complet du fichier qu'à ce niveau. Placées au niveau du <code>VirtualHost</code>, elles ne se comportent pas de la même façon — c'était la cause de l'<a href="/procedure?id=depannage">incident INC-05</a>.</p>
+<h3 id="reglage-php-recommande">Réglage PHP recommandé</h3>
+<p>GLPI signale <code>session.cookie_httponly</code> désactivé.</p>
+<p><strong>SUR glpi</strong></p>
+<pre><code class="language-bash">sudo sed -i 's/^;\?session.cookie_httponly.*/session.cookie_httponly = On/' /etc/php/8.2/apache2/php.ini
+sudo systemctl reload apache2
+</code></pre>
+<h3 id="verification">Vérification</h3>
+<pre><code class="language-bash"># SUR glpi
+sudo apache2ctl -S                      # glpi.conf actif sur *:80
+curl -sI http://localhost/ | head -n 1  # 200 ou 302
+curl -sI http://localhost/front/central.php | head -n 1   # 302 (redirection vers login), pas 404
+</code></pre>
+<hr />
+<h2 id="glpi-base-de-donnees">GLPI — Base de données</h2>
+<h3 id="creation">Création</h3>
+<p><strong>SUR bdd-01</strong> (répliqué sur les 3 nœuds)</p>
+<pre><code class="language-sql">-- sudo mariadb
+CREATE DATABASE glpi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'glpi'@'10.0.10.2' IDENTIFIED BY '&lt;PASSWORD&gt;';
+GRANT ALL PRIVILEGES ON glpi.* TO 'glpi'@'10.0.10.2';
+</code></pre>
+<h3 id="fuseaux-horaires-recommande-par-glpi">Fuseaux horaires (recommandé par GLPI)</h3>
+<p>GLPI peut stocker les dates en UTC si le compte peut lire les fuseaux horaires de MariaDB.</p>
+<p><strong>SUR bdd-01</strong></p>
+<pre><code class="language-bash">sudo mariadb-tzinfo-to-sql /usr/share/zoneinfo | sudo mariadb mysql
+sudo mariadb -e &quot;GRANT SELECT ON mysql.time_zone_name TO 'glpi'@'10.0.10.2';&quot;
+</code></pre>
+<blockquote>
+<p>Les tables <code>mysql.time_zone*</code> sont en <strong>MyISAM</strong> sous MariaDB 10.11 : elles ne sont pas répliquées par Galera. Exécuter <code>mariadb-tzinfo-to-sql</code> <strong>sur chacun des trois nœuds</strong> (le <code>GRANT</code>, lui, est répliqué).</p>
+</blockquote>
+<p><strong>SUR glpi</strong> (une fois GLPI installé)</p>
+<pre><code class="language-bash">sudo -u www-data php /var/www/glpi/bin/console database:enable_timezones
+</code></pre>
+<h3 id="verification_1">Vérification</h3>
+<p><strong>SUR glpi</strong></p>
+<pre><code class="language-bash">mariadb -h 10.0.10.2 -u glpi -p -e 'SELECT @@hostname; SHOW TABLES FROM glpi;' | head
+</code></pre>
+<p><strong>SUR bdd-02</strong> — toutes les tables GLPI doivent être InnoDB :</p>
+<pre><code class="language-sql">SELECT engine, COUNT(*) FROM information_schema.tables WHERE table_schema = 'glpi' GROUP BY engine;
+</code></pre>
+<h3 id="fichier-de-connexion-de-glpi">Fichier de connexion de GLPI</h3>
+<p>L'assistant écrit <code>/var/www/glpi/config/config_db.php</code> (hôte, compte, mot de passe). Ce fichier :</p>
+<ul>
+<li>reste hors de la racine web (<code>public/</code>) ;</li>
+<li>ne doit <strong>jamais</strong> être copié dans ce dépôt ;</li>
+<li>doit appartenir à <code>www-data</code> avec des droits restreints (<code>640</code>).</li>
+</ul>
+<hr />
+<h2 id="glpi-integration-haproxy">GLPI — Intégration HAProxy</h2>
+<p>GLPI utilise HAProxy <strong>dans les deux sens</strong> :</p>
+<pre><code class="language-text">Utilisateurs ──► HAProxy :8080 ──► glpi :80          (HTTP, frontend fe_glpi)
+glpi      ──► HAProxy :3306 ──► bdd-01/02/03       (SQL, listen galera_cluster)
+</code></pre>
+<h3 id="cote-http">Côté HTTP</h3>
+<p>Configuration et justification : <a href="/procedure?id=mo-02-haproxy">MO-2-HAProxy.md</a></p>
+<p>Points d'attention spécifiques à GLPI :</p>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Sujet</th>
+<th>Effet</th>
+<th>Mesure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>URL de l'application</td>
+<td>GLPI génère certains liens absolus (notifications, e-mails) à partir de son URL configurée</td>
+<td><em>Configuration → Générale → URL de l'application</em> = <code>http://10.0.10.2:8080</code></td>
+</tr>
+<tr>
+<td>IP des utilisateurs dans l'historique</td>
+<td>Sans traitement, GLPI enregistre 10.0.10.2</td>
+<td><code>mod_remoteip</code> dans le vhost (déjà en place)</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="cote-sql">Côté SQL</h3>
+<p>GLPI ouvre des connexions SQL <strong>courtes</strong> (une par requête HTTP). Elles sont réparties par HAProxy entre les 3 nœuds. Si un nœud tombe pendant une requête, cette requête peut échouer ; la suivante est envoyée sur un nœud sain.</p>
+<h3 id="test">Test</h3>
+<pre><code class="language-bash"># SUR adm-01
+curl -sI http://10.0.10.2:8080/ | grep -Ei 'HTTP/|X-Served-By'      # X-Served-By: glpi
+./scripts/validation/check-glpi.sh
+</code></pre>
+<p>Test T17 de la <a href="/procedure?id=plan-de-tests">matrice de validation</a>.</p>

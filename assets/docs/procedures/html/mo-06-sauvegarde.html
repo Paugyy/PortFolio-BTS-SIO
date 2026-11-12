@@ -1,0 +1,233 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 10/10/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>MariaDB, WordPress, GLPI et machines virtuelles Proxmox.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+</blockquote>
+<hr />
+<h2 id="sauvegarde-et-restauration-mariadb">Sauvegarde et restauration — MariaDB</h2>
+<h3 id="sauvegarde">Sauvegarde</h3>
+<p>Un <strong>seul nœud</strong> suffit (les données sont identiques). bdd-03 est recommandé : en mode round-robin il reçoit autant de trafic que les autres, mais en mode écrivain unique (bdd-01 actif), il est le moins sollicité.</p>
+<p><strong>SUR bdd-03</strong></p>
+<pre><code class="language-bash">sudo ./scripts/backup/backup-mariadb.sh
+sudo ./scripts/backup/backup-mariadb.sh --retention 14     # supprime les sauvegardes de plus de 14 jours
+ls -lh /var/backups/mariadb/
+</code></pre>
+<p>Ce que fait le script :</p>
+<ol>
+<li>Vérifie que le nœud est <code>Synced</code> (sinon abandon).</li>
+<li><code>mariadb-dump --all-databases --single-transaction --routines --events --triggers</code> : instantané cohérent <strong>sans verrou global</strong>, le cluster continue de servir.</li>
+<li>Compression gzip, droits <code>600</code>, empreinte SHA-256, test d'intégrité.</li>
+</ol>
+<h4 id="planification-exemple-statut-futur">Planification (exemple, statut : futur)</h4>
+<pre><code class="language-bash"># SUR bdd-03 — /etc/cron.d/backup-mariadb
+30 2 * * * root /opt/bts-sio-ha-infrastructure/scripts/backup/backup-mariadb.sh --retention 14 &gt;&gt; /var/log/backup-mariadb.log 2&gt;&amp;1
+</code></pre>
+<h4 id="sauvegarde-dune-seule-base">Sauvegarde d'une seule base</h4>
+<pre><code class="language-bash"># SUR bdd-03
+sudo mariadb-dump --single-transaction --routines --triggers wordpress | gzip &gt; /var/backups/mariadb/wordpress-$(date +%F).sql.gz
+</code></pre>
+<h3 id="restauration">Restauration</h3>
+<blockquote>
+<p>Une restauration sur un nœud Galera est <strong>répliquée sur tout le cluster</strong>. C'est le comportement voulu pour revenir en arrière, mais il écrase les données actuelles des trois nœuds. Vérifier deux fois la base cible.</p>
+</blockquote>
+<h4 id="restaurer-une-base-ex-wordpress">Restaurer une base (ex. WordPress)</h4>
+<pre><code class="language-bash"># SUR bdd-01
+sha256sum -c /var/backups/mariadb/&lt;FICHIER&gt;.sql.gz.sha256        # intégrité
+# Extraire la base wordpress d'un dump complet n'est pas trivial : préférer un dump par base,
+# ou restaurer le dump complet sur un environnement de test et exporter la base voulue.
+gunzip -c /var/backups/mariadb/wordpress-&lt;DATE&gt;.sql.gz | sudo mariadb wordpress
+</code></pre>
+<h4 id="restaurer-tout-le-cluster-dump-complet">Restaurer tout le cluster (dump complet)</h4>
+<ol>
+<li><strong>SUR bdd-01</strong> : <code>gunzip -c &lt;FICHIER&gt;.sql.gz | sudo mariadb</code></li>
+<li>La restauration est répliquée sur bdd-02 et bdd-03.</li>
+<li>Valider : <code>check-galera.sh</code> sur chaque nœud, puis WordPress et GLPI.</li>
+</ol>
+<h4 id="restauration-apres-perte-totale-des-3-nuds">Restauration après perte totale des 3 nœuds</h4>
+<ol>
+<li>Réinstaller <strong>un</strong> nœud, le bootstrapper (cluster vide).</li>
+<li>Restaurer le dump sur ce nœud.</li>
+<li>Démarrer les deux autres nœuds : ils reçoivent les données par SST.</li>
+</ol>
+<h3 id="verification-dune-sauvegarde-sans-restaurer-en-production">Vérification d'une sauvegarde (sans restaurer en production)</h3>
+<pre><code class="language-bash"># SUR UNE VM DE TEST
+gunzip -t &lt;FICHIER&gt;.sql.gz
+gunzip -c &lt;FICHIER&gt;.sql.gz | grep -c 'CREATE TABLE'
+gunzip -c &lt;FICHIER&gt;.sql.gz | head -n 20
+</code></pre>
+<hr />
+<h2 id="sauvegarde-et-restauration-wordpress">Sauvegarde et restauration — WordPress</h2>
+<p>Une sauvegarde WordPress complète = <strong>base</strong> (mariadb.md) + <strong>fichiers</strong> (ci-dessous). L'une sans l'autre ne suffit pas : la base référence des médias présents seulement sur disque.</p>
+<h3 id="sauvegarde-des-fichiers">Sauvegarde des fichiers</h3>
+<p>web-01 étant le serveur de référence des fichiers, c'est lui qui est sauvegardé.</p>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">sudo ./scripts/backup/backup-wordpress.sh
+ls -lh /var/backups/wordpress/
+</code></pre>
+<p>L'archive contient <code>wp-config.php</code> (mot de passe SQL, clés) : droits <code>600</code>, stockage chiffré hors du lab, <strong>jamais</strong> dans Git.</p>
+<h3 id="restauration_1">Restauration</h3>
+<h4 id="restaurer-les-fichiers-sur-web-01">Restaurer les fichiers sur web-01</h4>
+<pre><code class="language-bash"># SUR web-01
+sha256sum -c /var/backups/wordpress/&lt;FICHIER&gt;.tar.gz.sha256
+sudo mv /var/www/wordpress /var/www/wordpress.before-restore-$(date +%F)
+sudo tar -xzf /var/backups/wordpress/&lt;FICHIER&gt;.tar.gz -C /var/www/
+sudo chown -R www-data:www-data /var/www/wordpress
+sudo chown root:www-data /var/www/wordpress/wp-config.php &amp;&amp; sudo chmod 640 /var/www/wordpress/wp-config.php
+</code></pre>
+<h4 id="propager-vers-web-02">Propager vers web-02</h4>
+<p>Synchronisation habituelle : <a href="/procedure?id=mo-03-wordpress-ha">MO-3-WordPress-HA.md</a>.</p>
+<h4 id="coherence-base-fichiers">Cohérence base / fichiers</h4>
+<p>Restaurer la base et les fichiers <strong>de la même date</strong>. Sinon : médias manquants (fichiers plus anciens que la base) ou orphelins (fichiers plus récents).</p>
+<h3 id="reconstruire-un-serveur-web-perdu">Reconstruire un serveur web perdu</h3>
+<p>Grâce à la redondance, la perte de web-02 ne nécessite <strong>aucune sauvegarde</strong> :</p>
+<ol>
+<li>Recréer la VM (Debian, IP <code>10.0.10.4</code>, VLAN 301).</li>
+<li><a href="/procedure?id=mo-03-wordpress-ha">MO-3-WordPress-HA.md</a> : dépendances, vhost, copie des fichiers depuis web-01.</li>
+<li>HAProxy le réintègre automatiquement dès que le health-check réussit.</li>
+</ol>
+<hr />
+<h2 id="sauvegarde-et-restauration-glpi">Sauvegarde et restauration — GLPI</h2>
+<p>GLPI n'étant <strong>pas redondé</strong>, sa sauvegarde est la seule protection contre la perte de glpi.</p>
+<h3 id="donnees-a-sauvegarder">Données à sauvegarder</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Donnée</th>
+<th>Emplacement</th>
+<th>Contenu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Base <code>glpi</code></td>
+<td>Galera</td>
+<td>Tickets, parc, utilisateurs, paramètres</td>
+</tr>
+<tr>
+<td>Documents joints</td>
+<td><code>/var/www/glpi/files/</code></td>
+<td>Pièces jointes, images, exports</td>
+</tr>
+<tr>
+<td>Configuration</td>
+<td><code>/var/www/glpi/config/</code></td>
+<td><code>config_db.php</code> (identifiants SQL), clé de chiffrement <code>glpicrypt.key</code></td>
+</tr>
+<tr>
+<td>Extensions</td>
+<td><code>/var/www/glpi/plugins/</code>, <code>/var/www/glpi/marketplace/</code></td>
+<td>Plugins installés</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p><code>glpicrypt.key</code> chiffre certains secrets stockés en base (mots de passe LDAP, SMTP…). Sans elle, ces secrets sont <strong>irrécupérables</strong> après restauration. Elle doit être sauvegardée avec la même protection qu'un mot de passe.</p>
+</blockquote>
+<h3 id="sauvegarde_1">Sauvegarde</h3>
+<p><strong>SUR bdd-03</strong> — base :</p>
+<pre><code class="language-bash">sudo mariadb-dump --single-transaction --routines --triggers glpi | gzip &gt; /var/backups/mariadb/glpi-$(date +%F).sql.gz
+sudo chmod 600 /var/backups/mariadb/glpi-*.sql.gz
+</code></pre>
+<p><strong>SUR glpi</strong> — fichiers :</p>
+<pre><code class="language-bash">sudo install -d -m 700 /var/backups/glpi
+sudo tar -czf /var/backups/glpi/glpi-files-$(date +%F).tar.gz -C /var/www glpi/files glpi/config glpi/plugins glpi/marketplace
+sudo chmod 600 /var/backups/glpi/*.tar.gz
+</code></pre>
+<h3 id="restauration-glpi-reconstruit">Restauration (glpi reconstruit)</h3>
+<ol>
+<li><a href="/procedure?id=mo-04-glpi">MO-4-GLPI.md</a> : dépendances, <strong>même version</strong> de GLPI, vhost.</li>
+<li>Restaurer <code>files/</code>, <code>config/</code>, <code>plugins/</code>, <code>marketplace/</code> depuis l'archive ; <code>chown -R www-data:www-data /var/www/glpi</code>.</li>
+<li>Si la base a été perdue : la restaurer sur Galera (<code>gunzip -c glpi-&lt;DATE&gt;.sql.gz | sudo mariadb glpi</code>).</li>
+<li>Vérifier : <code>sudo -u www-data php /var/www/glpi/bin/console database:check_schema_integrity</code>.</li>
+<li><code>./scripts/validation/check-glpi.sh</code> depuis adm-01.</li>
+</ol>
+<hr />
+<h2 id="sauvegarde-et-restauration-proxmox-et-pfsense">Sauvegarde et restauration — Proxmox et pfSense</h2>
+<h3 id="snapshots-ou-sauvegardes">Snapshots ou sauvegardes ?</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th></th>
+<th>Snapshot Proxmox</th>
+<th>Sauvegarde <code>vzdump</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Emplacement</td>
+<td>Même stockage que la VM</td>
+<td>Fichier indépendant (<code>.vma.zst</code>)</td>
+</tr>
+<tr>
+<td>Survit à la perte du disque</td>
+<td><strong>Non</strong></td>
+<td>Oui, si stocké ailleurs</td>
+</tr>
+<tr>
+<td>Usage</td>
+<td>Retour arrière rapide avant une manipulation</td>
+<td>Restauration après sinistre</td>
+</tr>
+<tr>
+<td>Durée de conservation</td>
+<td>Courte (heures, jours)</td>
+<td>Longue (semaines)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Snapshot</strong> avant toute opération risquée (bootstrap Galera, mise à jour, changement de règles pfSense). <strong>Sauvegarde</strong> pour la protection réelle.</p>
+<h3 id="snapshots">Snapshots</h3>
+<p><strong>SUR L'HÔTE PROXMOX</strong></p>
+<pre><code class="language-bash"># Avant une campagne de tests de panne (exemple avec les VMID 105, 106, 107 = bdd-01/02/03)
+for id in 105 106 107; do qm snapshot &quot;$id&quot; avant-tests-$(date +%Y%m%d) --description &quot;Avant tests T20&quot;; done
+qm listsnapshot 105
+# Retour arrière si nécessaire
+qm rollback 105 avant-tests-AAAAMMJJ
+</code></pre>
+<blockquote>
+<p>Snapshot d'un nœud Galera <strong>en marche</strong> : à la restauration, le nœud revient avec un état ancien et se resynchronise par IST/SST — c'est sans danger tant qu'on ne restaure pas <strong>les trois</strong> à des instants différents.</p>
+</blockquote>
+<h3 id="sauvegardes-vzdump">Sauvegardes vzdump</h3>
+<p><strong>SUR L'HÔTE PROXMOX</strong> (<em>Datacenter → Backup → Add</em>, ou en ligne de commande)</p>
+<pre><code class="language-bash">vzdump 105 --mode snapshot --compress zstd --storage &lt;STOCKAGE_BACKUP&gt;
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Paramètre</th>
+<th>Recommandation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mode</td>
+<td><code>snapshot</code> (sans arrêt de la VM)</td>
+</tr>
+<tr>
+<td>Stockage</td>
+<td><strong>Distinct</strong> du stockage des VM : NFS, Proxmox Backup Server, disque externe</td>
+</tr>
+<tr>
+<td>Fréquence</td>
+<td>Hebdomadaire (lab)</td>
+</tr>
+<tr>
+<td>Rétention</td>
+<td>4 sauvegardes</td>
+</tr>
+</tbody>
+</table></div>
+<p>Restauration : <em>Storage → Backups → Restore</em>, ou <code>qmrestore &lt;fichier&gt; &lt;vmid&gt;</code>.</p>
+<h3 id="pfsense">pfSense</h3>
+<p><strong>SUR PFSENSE</strong> (<em>Diagnostics → Backup &amp; Restore</em>)</p>
+<ul>
+<li><strong>Backup area</strong> : All.</li>
+<li>Cocher <strong>Encrypt this configuration file</strong> et choisir une phrase de passe forte (stockée dans le gestionnaire de mots de passe).</li>
+<li>Télécharger le fichier XML <strong>chiffré</strong> et le stocker hors du lab.</li>
+</ul>
+<blockquote>
+<p>L'export contient hash de mots de passe, clés et certificats : <strong>jamais</strong> dans ce dépôt (<code>.gitignore</code> bloque <code>config-*.xml</code>). Les règles sont documentées sous forme de tableaux dans configs/pfsense/.</p>
+</blockquote>
+<p>Restauration : même menu, <em>Restore configuration</em>, en fournissant la phrase de passe.</p>

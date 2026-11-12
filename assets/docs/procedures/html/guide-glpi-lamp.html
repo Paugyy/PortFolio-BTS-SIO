@@ -1,0 +1,14 @@
+<p>Gestion de parc et tickets sur un seul serveur.</p>
+<h2 id="etapes">Étapes</h2>
+<pre><code class="language-bash">sudo apt install -y apache2 mariadb-server php php-{mysql,curl,gd,intl,xml,mbstring,zip,bz2,ldap,bcmath}
+sudo mysql_secure_installation
+sudo mysql -e &quot;CREATE DATABASE glpi; CREATE USER 'glpi'@'localhost' IDENTIFIED BY 'MotDePasse'; GRANT ALL ON glpi.* TO 'glpi'@'localhost';&quot;
+# Télécharger la dernière version sur github.com/glpi-project/glpi/releases
+sudo tar -xzf glpi-*.tgz -C /var/www/html/
+sudo chown -R www-data:www-data /var/www/html/glpi
+</code></pre>
+<ol>
+<li>Ouvrir <code>http://IP/glpi</code> et suivre l'assistant (base <code>glpi</code>).</li>
+<li>Comptes par défaut : <code>glpi/glpi</code> (admin) — <strong>changer tous les mots de passe</strong> et supprimer <code>install/install.php</code>.</li>
+<li>Installer l'agent GLPI sur les postes pour l'inventaire automatique.</li>
+</ol>

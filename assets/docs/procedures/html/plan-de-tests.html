@@ -1,0 +1,789 @@
+<blockquote>
+<p>📁 Document de mon dossier E6 (BTS SIO SISR), tel que je l'ai rédigé pendant la mise en place de mon laboratoire. Version du 06/11/2026. Les adresses sont celles de mon laboratoire : adapte-les au tien.</p>
+</blockquote>
+<p>Tests de bascule, du cluster, du répartiteur et du réseau, avec leur état.</p>
+<blockquote>
+<p>🔐 Aucun mot de passe ni clé dans ce document : les secrets sont remplacés par des marque-places.</p>
+<p>⚠️ <strong>Écarts avec le labo réel</strong> (configuration relevée le 01/10/2026, voir le DAT §7.2) :
+HAProxy contrôle ses serveurs <strong>toutes les 2 s</strong> (<code>inter 2s fall 3 rise 2</code>), le contrôle SQL est un simple
+test de port (<code>tcp-check</code>, pas <code>mysql-check</code>), et il n'y a <strong>ni page de statistiques (8404) ni en-tête
+<code>X-Served-By</code></strong> : les passages qui les citent décrivent une cible, pas l'existant. adm-01 est le contrôleur
+de domaine Windows : les commandes notées « sur adm-01 » se jouent depuis une session du bastion Guacamole.</p>
+</blockquote>
+<hr />
+<h2 id="plan-de-tests">Plan de tests</h2>
+<h3 id="objectif">Objectif</h3>
+<p>Démontrer, par des tests <strong>reproductibles</strong> et <strong>tracés</strong>, que l'infrastructure atteint ses objectifs (DAT-Infrastructure.md) : fonctionnement nominal, tolérance aux pannes, filtrage.</p>
+<h3 id="organisation">Organisation</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Famille</th>
+<th>Tests</th>
+<th>Document</th>
+<th>Outils</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Réseau</td>
+<td>T01, T02, T18, T19</td>
+<td>Matrice-de-flux.md</td>
+<td><code>check-network.sh</code>, <code>nc</code>, <code>curl</code></td>
+</tr>
+<tr>
+<td>Base de données</td>
+<td>T03 à T08, T20</td>
+<td>galera-tests.md</td>
+<td><code>check-galera.sh</code>, <code>test-galera-node.sh</code></td>
+</tr>
+<tr>
+<td>Répartition</td>
+<td>T09, T10, T13</td>
+<td>haproxy-tests.md</td>
+<td><code>check-haproxy.sh</code>, <code>test-sql-round-robin.sh</code></td>
+</tr>
+<tr>
+<td>Web</td>
+<td>T11, T12, T14 à T16</td>
+<td>wordpress-failover.md</td>
+<td><code>check-wordpress.sh</code>, <code>test-web0X-failure.sh</code></td>
+</tr>
+<tr>
+<td>GLPI</td>
+<td>T17</td>
+<td>haproxy-tests.md</td>
+<td><code>check-glpi.sh</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Synthèse et statuts : validation-matrix.md</p>
+<h3 id="ordre-dexecution">Ordre d'exécution</h3>
+<pre><code class="language-text">T01-T02 (réseau, SSH)
+   └─► T03-T08 (MariaDB, Galera)
+         └─► T09-T10 (HAProxy SQL)
+               └─► T11-T13 (WordPress, HAProxy HTTP)
+                     └─► T17 (GLPI) ─► T18-T19 (NAT, firewall)
+                           └─► T14-T16, T20 (pannes : en dernier, sur une base saine)
+</code></pre>
+<p>Les tests de panne ne sont lancés que lorsque <strong>tous</strong> les tests nominaux sont réussis : sinon, impossible de savoir si un échec vient de la panne simulée ou d'un défaut préexistant.</p>
+<h3 id="regles">Règles</h3>
+<ol>
+<li><strong>Une preuve par test</strong> : sortie de commande (fichier texte) ou capture d'écran, rangée dans evidence/.</li>
+<li><strong>Statut honnête</strong> : un test non rejoué depuis la dernière modification repasse en « À rejouer ».</li>
+<li><strong>Date et version</strong> : chaque campagne note la date et le commit du dépôt.</li>
+<li><strong>Pannes réversibles</strong> : les pannes sont simulées par arrêt de service (<code>systemctl stop</code>), jamais par suppression de données.</li>
+<li><strong>Snapshot préalable</strong> : avant une campagne de pannes, snapshot Proxmox des VM concernées.</li>
+</ol>
+<h3 id="enregistrer-une-campagne">Enregistrer une campagne</h3>
+<pre><code class="language-bash"># SUR adm-01 — exemple d'archivage d'une sortie
+./scripts/validation/check-wordpress.sh | tee &quot;evidence/test-results/$(date +%F)-T13-haproxy-http.txt&quot;
+
+# Les scripts de failover ont une option dédiée
+./scripts/failover/test-web01-failure.sh --save
+</code></pre>
+<p>Pour supprimer les codes couleur dans les fichiers : <code>NO_COLOR=1 ./scripts/...</code></p>
+<h3 id="criteres-de-reussite-globaux">Critères de réussite globaux</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Critère</th>
+<th>Seuil</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tests nominaux (T01 à T13, T17 à T19)</td>
+<td>100 % réussis</td>
+</tr>
+<tr>
+<td>Tests de panne (T14 à T16, T20)</td>
+<td>100 % réussis, 0 erreur client pendant la panne web</td>
+</tr>
+<tr>
+<td>Délai de détection d'une panne web</td>
+<td>≤ 10 s (<code>fall 3</code> × <code>inter 3s</code>)</td>
+</tr>
+<tr>
+<td>Délai de réintégration</td>
+<td>≤ 10 s (<code>rise 2</code> × <code>inter 3s</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="matrice-de-validation">Matrice de validation</h2>
+<h3 id="legende-des-statuts">Légende des statuts</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Statut</th>
+<th>Signification</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✅ Validé</td>
+<td>Test exécuté, résultat conforme, <strong>preuve archivée</strong> dans <code>evidence/</code></td>
+</tr>
+<tr>
+<td>🟡 Déclaré</td>
+<td>Fonctionnalité réalisée dans le lab (roadmap cochée), <strong>preuve à produire et archiver</strong></td>
+</tr>
+<tr>
+<td>⬜ À exécuter</td>
+<td>Test jamais exécuté ou à rejouer depuis la dernière modification</td>
+</tr>
+<tr>
+<td>❌ Échec</td>
+<td>Test exécuté, résultat non conforme — incident ouvert</td>
+</tr>
+<tr>
+<td>🔴 Bloqué</td>
+<td>Test impossible tant qu'un prérequis manque (T17 : GLPI pas installé)</td>
+</tr>
+</tbody>
+</table></div>
+<blockquote>
+<p>Les statuts ci-dessous sont <strong>initialisés d'après l'avancement déclaré du projet</strong> (roadmap du README). Aucun test n'est marqué ✅ tant que sa preuve n'est pas présente dans evidence/. Mettre à jour cette page à chaque campagne.</p>
+</blockquote>
+<p>Campagne : <code>AAAA-MM-JJ</code> — commit : <code>&lt;COMMIT&gt;</code> — opérateur : <code>&lt;OPERATEUR&gt;</code></p>
+<h3 id="matrice">Matrice</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>ID</th>
+<th>Composant</th>
+<th>Test</th>
+<th>Commande</th>
+<th>Résultat attendu</th>
+<th>Statut</th>
+<th>Preuve</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T01</td>
+<td>Réseau</td>
+<td>Passerelles et hôtes joignables</td>
+<td>adm-01 : <code>scripts/validation/check-network.sh</code></td>
+<td>4 passerelles, 8 hôtes, ports autorisés ouverts</td>
+<td>🟡 Déclaré</td>
+<td><code>02-pfsense-interfaces-vlan.png</code>, <code>*-T01-network.txt</code></td>
+</tr>
+<tr>
+<td>T02</td>
+<td>SSH</td>
+<td>Connexion par clé sur chaque VM</td>
+<td>adm-01 : <code>ssh -o BatchMode=yes mysql01 hostname</code></td>
+<td>Connexion sans mot de passe ; mot de passe refusé</td>
+<td>⬜ À exécuter</td>
+<td><code>*-T02-ssh.txt</code></td>
+</tr>
+<tr>
+<td>T03</td>
+<td>MariaDB</td>
+<td>Service actif, écoute sur l'IP vBDD</td>
+<td>bdd-0X : <code>ss -ltnp \| grep 3306</code></td>
+<td><code>10.0.20.X:3306</code> sur les 3 nœuds</td>
+<td>🟡 Déclaré</td>
+<td><code>*-T04-T07-mysql0X.txt</code></td>
+</tr>
+<tr>
+<td>T04</td>
+<td>Galera</td>
+<td>Taille du cluster</td>
+<td>bdd-0X : <code>check-galera.sh</code></td>
+<td><code>wsrep_cluster_size = 3</code></td>
+<td>✅ Passé le 30/10</td>
+<td><code>06-galera-3-noeuds-synced.png</code></td>
+</tr>
+<tr>
+<td>T05</td>
+<td>Galera</td>
+<td>Composant primaire</td>
+<td>bdd-0X : <code>check-galera.sh</code></td>
+<td><code>wsrep_cluster_status = Primary</code></td>
+<td>✅ Passé le 30/10</td>
+<td><code>06-galera-3-noeuds-synced.png</code></td>
+</tr>
+<tr>
+<td>T06</td>
+<td>Galera</td>
+<td>Nœud synchronisé</td>
+<td>bdd-0X : <code>check-galera.sh</code></td>
+<td><code>wsrep_local_state_comment = Synced</code></td>
+<td>✅ Passé le 30/10 (3 nœuds)</td>
+<td><code>06-galera-3-noeuds-synced.png</code></td>
+</tr>
+<tr>
+<td>T07</td>
+<td>Galera</td>
+<td>Nœud prêt</td>
+<td>bdd-0X : <code>check-galera.sh</code></td>
+<td><code>wsrep_ready = ON</code></td>
+<td>✅ Passé le 30/10</td>
+<td><code>06-galera-3-noeuds-synced.png</code></td>
+</tr>
+<tr>
+<td>T08</td>
+<td>Galera</td>
+<td>Réplication multi-maître</td>
+<td>INSERT sur chaque nœud, SELECT sur les autres (<a href="/procedure?id=mo-01-galera">procédure</a>)</td>
+<td>Données identiques sur les 3 nœuds</td>
+<td>🟡 Déclaré</td>
+<td><code>*-T08-replication.txt</code></td>
+</tr>
+<tr>
+<td>T09</td>
+<td>HAProxy SQL</td>
+<td>Connexion SQL via HAProxy</td>
+<td>web-01 : <code>mariadb -h 10.0.10.2 -u wordpress -p -e 'SELECT @@hostname'</code></td>
+<td>Réponse d'un nœud Galera</td>
+<td>🟡 Déclaré</td>
+<td><code>*-T09-sql.txt</code></td>
+</tr>
+<tr>
+<td>T10</td>
+<td>HAProxy SQL</td>
+<td>Répartition round-robin</td>
+<td>haproxy : <code>test-sql-round-robin.sh -n 9</code></td>
+<td>3 nœuds distincts, 0 erreur</td>
+<td>⬜ À exécuter</td>
+<td><code>*-T10-sql-round-robin.txt</code></td>
+</tr>
+<tr>
+<td>T11</td>
+<td>WordPress</td>
+<td>web-01 répond</td>
+<td>adm-01 : <code>curl -I http://10.0.10.1</code></td>
+<td>HTTP 200/30x</td>
+<td>🟡 Déclaré</td>
+<td><code>06-wordpress-web01.png</code></td>
+</tr>
+<tr>
+<td>T12</td>
+<td>WordPress</td>
+<td>web-02 répond</td>
+<td>adm-01 : <code>curl -I http://10.0.10.4</code></td>
+<td>HTTP 200/30x</td>
+<td>🟡 Déclaré</td>
+<td><code>07-wordpress-web02.png</code></td>
+</tr>
+<tr>
+<td>T13</td>
+<td>HAProxy HTTP</td>
+<td>Répartition HTTP</td>
+<td>adm-01 : <code>check-wordpress.sh</code></td>
+<td>HAProxy UP, alternance <code>X-Served-By</code></td>
+<td>🟡 web-01 et web-02 UP (30/10) ; en-tête <code>X-Served-By</code> pas encore ajouté</td>
+<td><code>07-haproxy-etat-serveurs.png</code></td>
+</tr>
+<tr>
+<td>T14</td>
+<td>Failover</td>
+<td>Panne web-01</td>
+<td>web-01 : <code>sudo systemctl stop apache2</code> ; adm-01 : <code>curl -I http://10.0.10.2</code></td>
+<td>0 erreur, <code>X-Served-By: web-02</code></td>
+<td>✅ Passé le 30/10 : web-01 DOWN en 9 s, 6 réponses sur 6</td>
+<td><code>08-test-panne-web01.png</code></td>
+</tr>
+<tr>
+<td>T15</td>
+<td>Failover</td>
+<td>Panne web-02</td>
+<td>web-02 : <code>sudo systemctl stop apache2</code> ; adm-01 : <code>curl -I http://10.0.10.2</code></td>
+<td>0 erreur, <code>X-Served-By: web-01</code></td>
+<td>✅ Passé le 30/10 : web-02 DOWN en 9 s, 6 réponses sur 6</td>
+<td><code>09-test-panne-web02.png</code></td>
+</tr>
+<tr>
+<td>T16</td>
+<td>Failover</td>
+<td>Réintégration d'un backend</td>
+<td><code>sudo systemctl start apache2</code> ; adm-01 : <code>curl -I http://10.0.10.2</code></td>
+<td>Alternance rétablie en ≤ 10 s, sans action sur HAProxy</td>
+<td>⬜ À exécuter</td>
+<td><code>*-failover-web01.log</code></td>
+</tr>
+<tr>
+<td>T17</td>
+<td>GLPI</td>
+<td>GLPI via HAProxy</td>
+<td>adm-01 : <code>check-glpi.sh</code></td>
+<td>UP direct et via <code>:8080</code></td>
+<td>🔴 30/10 : GLPI affiche son assistant d'installation (base vide)</td>
+<td><code>11-glpi-ticket-incident-1.png</code> après installation</td>
+</tr>
+<tr>
+<td>T18</td>
+<td>NAT</td>
+<td>Publication WAN</td>
+<td>Poste labo : <code>curl -I http://10.4.0.198:8081</code></td>
+<td>HTTP 200/30x, <code>X-Served-By</code> présent</td>
+<td>🟡 Déclaré</td>
+<td><code>*-T18-nat.txt</code></td>
+</tr>
+<tr>
+<td>T19</td>
+<td>Firewall</td>
+<td>Flux interdits bloqués</td>
+<td>vUSER : <code>nc -zv -w 3 10.0.20.1 3306</code> (et liste)</td>
+<td>Timeout sur chaque flux interdit</td>
+<td>⬜ À exécuter</td>
+<td><code>02-pfsense-firewall-vweb.png</code>, <code>*-T19-firewall.txt</code></td>
+</tr>
+<tr>
+<td>T20</td>
+<td>Galera</td>
+<td>Perte d'un nœud</td>
+<td>haproxy : <code>test-galera-node.sh --node 3</code></td>
+<td><code>size = 2</code>, <code>Primary</code>, SQL OK ; retour <code>size = 3</code></td>
+<td>⬜ À exécuter</td>
+<td><code>*-T20-galera-node.txt</code></td>
+</tr>
+<tr>
+<td>T21</td>
+<td>Supervision</td>
+<td>Zabbix toujours publié</td>
+<td>Poste admin : navigateur <code>http://10.4.0.198:2231/zabbix/</code></td>
+<td>Page de connexion Zabbix</td>
+<td>🟡 <code>/zabbix/</code> répond <code>200</code> en local le 06/11 ; à rejouer depuis le poste</td>
+<td><code>*-T21-zabbix.png</code></td>
+</tr>
+<tr>
+<td>T22</td>
+<td>NAT</td>
+<td>SSH de zabbix toujours publié</td>
+<td>Poste admin : <code>Test-NetConnection 10.4.0.198 -Port 2232</code></td>
+<td><code>TcpTestSucceeded : True</code></td>
+<td>⬜ À exécuter</td>
+<td><code>*-T22-ssh-zabbix.txt</code></td>
+</tr>
+<tr>
+<td>T23</td>
+<td>NAT</td>
+<td>LogAnalyzer joignable depuis le poste</td>
+<td>Poste <code>10.2.0.122</code> : Chrome <code>http://10.4.0.198:2233/</code></td>
+<td>Demande d'authentification, puis interface</td>
+<td>🟡 Passé le 06/11 (après correction du <code>403</code>, INC-05)</td>
+<td><code>16-loganalyzer-403-initial.png</code>, <code>22-syslog-recette-8-vm.png</code></td>
+</tr>
+<tr>
+<td>T24</td>
+<td>Apache</td>
+<td>Authentification LogAnalyzer</td>
+<td>zabbix : <code>curl -I http://127.0.0.1:8085/</code> puis avec <code>-u &lt;COMPTE_LOGANALYZER&gt;</code></td>
+<td><code>401</code>, puis <code>200</code> ; <code>/zabbix/</code> toujours <code>200</code></td>
+<td>🟡 Passé le 06/11 (sortie de commande)</td>
+<td><code>*-T24-curl.txt</code></td>
+</tr>
+<tr>
+<td>T25</td>
+<td>LogAnalyzer</td>
+<td>Assistant et source des journaux</td>
+<td>Poste : <code>/install.php</code> (<a href="/procedure?id=mo-09-rsyslog-loganalyzer">MO-9 §3</a>)</td>
+<td>Source <code>SYSLOG-CENTRAL</code>, <em>Diskfile</em>, <code>central.log</code></td>
+<td>🟡 Passé le 06/11 (LogAnalyzer 5.0.2)</td>
+<td><code>18-…</code>, <code>19-loganalyzer-source-diskfile.png</code></td>
+</tr>
+<tr>
+<td>T26</td>
+<td>Rsyslog</td>
+<td>Réception locale TCP et UDP</td>
+<td>zabbix : <code>logger</code> local vers le port 514, <code>sudo tail central.log</code></td>
+<td>Les 2 messages de test (07:35:37, 07:35:42)</td>
+<td>🟡 Passé le 06/11</td>
+<td><code>20-loganalyzer-tests-locaux.png</code></td>
+</tr>
+<tr>
+<td>T27</td>
+<td>Rsyslog</td>
+<td>Envois <strong>directs</strong> depuis les 8 VM Linux</td>
+<td>chaque VM : <code>logger -n 10.0.30.3 -P 514 -T -t TEST-&lt;VM&gt; "…"</code></td>
+<td>8 lignes dans <code>central.log</code></td>
+<td>🟡 Passé le 06/11</td>
+<td><code>21-syslog-envois-directs.png</code></td>
+</tr>
+<tr>
+<td>T28</td>
+<td>Rsyslog</td>
+<td>Envoi <strong>automatique</strong> depuis les 8 VM Linux</td>
+<td>chaque VM : <code>logger -t SYSLOG-AUTO "TEST AUTOMATIQUE DEPUIS $(hostname)"</code></td>
+<td>8/8 lignes <code>SYSLOG-AUTO</code> dans LogAnalyzer</td>
+<td>🟡 Passé le 06/11 : <strong>8/8</strong>, plus des événements <code>sudo</code> et <code>mariadbd</code> réels</td>
+<td><code>22-syslog-recette-8-vm.png</code></td>
+</tr>
+<tr>
+<td>T29</td>
+<td>Rsyslog</td>
+<td>Événements de pfSense</td>
+<td>fw-01 : <em>Remote Logging</em> vers <code>10.0.30.3:514</code>, puis une connexion à l'interface</td>
+<td>Hôte pfSense visible dans LogAnalyzer</td>
+<td>⬜ À exécuter</td>
+<td><code>*-T29-syslog-pfsense.png</code></td>
+</tr>
+<tr>
+<td>T30</td>
+<td>Firewall</td>
+<td>Source non autorisée bloquée</td>
+<td>cli-01 : <code>Test-NetConnection 10.0.30.3 -Port 514</code></td>
+<td><code>False</code> ; refus visible dans <em>Status / System Logs / Firewall</em></td>
+<td>⬜ À exécuter</td>
+<td><code>*-T30-syslog-bloque.txt</code></td>
+</tr>
+<tr>
+<td>T31</td>
+<td>Firewall</td>
+<td><code>DEFAULT-DENY</code> dernière sur chaque interface</td>
+<td>pfSense : <em>Firewall / Rules</em>, 5 onglets (après nouvel export)</td>
+<td>Dernière ligne = <code>BLOCK ALL</code> partout ; PASS 514 au-dessus des isolements</td>
+<td>⬜ À exécuter</td>
+<td><code>24-pfsense-regles-syslog.png</code></td>
+</tr>
+<tr>
+<td>T32</td>
+<td>LogAnalyzer</td>
+<td>Verrouillage après l'assistant</td>
+<td>zabbix : <code>curl -I -u &lt;COMPTE_LOGANALYZER&gt; http://127.0.0.1:8085/install.php</code></td>
+<td><code>404</code> ; messages toujours visibles</td>
+<td>⬜ À exécuter</td>
+<td><code>*-T32-verrouillage.txt</code></td>
+</tr>
+<tr>
+<td>T33</td>
+<td>Rsyslog</td>
+<td>Résilience d'un émetteur</td>
+<td>VM pilote : redémarrage, puis <code>logger -t SYSLOG-AUTO</code> ; coupure puis retour du 514</td>
+<td>Messages reçus après redémarrage et après la coupure (file d'attente)</td>
+<td>⬜ À exécuter</td>
+<td><code>*-T33-resilience.txt</code></td>
+</tr>
+<tr>
+<td>T34</td>
+<td>Rsyslog</td>
+<td>Rotation de <code>central.log</code></td>
+<td>zabbix : <code>logrotate -d</code>, puis rotation réelle en maintenance</td>
+<td>Nouveau fichier <code>0640 root:www-data</code>, réception continue</td>
+<td>⬜ À exécuter</td>
+<td><code>*-T34-logrotate.txt</code></td>
+</tr>
+<tr>
+<td>T35</td>
+<td>Rsyslog</td>
+<td>Événements Windows</td>
+<td>adm-01 et cli-01 (méthode à choisir)</td>
+<td>Un événement Windows réel dans LogAnalyzer</td>
+<td>⬜ À exécuter</td>
+<td><code>*-T35-windows.png</code></td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="synthese">Synthèse</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Statut</th>
+<th>Nombre</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>✅ Validé</td>
+<td>6 (T04 à T07, T14, T15)</td>
+</tr>
+<tr>
+<td>🟡 Déclaré (passé, preuve à archiver)</td>
+<td>15</td>
+</tr>
+<tr>
+<td>⬜ À exécuter</td>
+<td>13</td>
+</tr>
+<tr>
+<td>🔴 Bloqué</td>
+<td>1 (T17)</td>
+</tr>
+<tr>
+<td>❌ Échec</td>
+<td>0</td>
+</tr>
+</tbody>
+</table></div>
+<p><em>Recompté le 06/11/2026 sur 35 tests. T21 à T35 couvrent la journalisation centralisée (<a href="/procedure?id=mo-09-rsyslog-loganalyzer">MO-9</a>, registre du 06/11) : T23 à T28 passent à ✅ dès que les captures 16 à 22 sont déposées.</em></p>
+<p>Objectif avant soutenance : <strong>35 ✅</strong>, chaque preuve rangée selon la convention de <code>evidence/README.md</code> (dépôt GitHub).</p>
+<hr />
+<h2 id="tests-galera">Tests Galera</h2>
+<h3 id="t03-mariadb-operationnel">T03 — MariaDB opérationnel</h3>
+<p><strong>SUR bdd-01, bdd-02, bdd-03</strong></p>
+<pre><code class="language-bash">systemctl is-active mariadb                       # active
+sudo ss -ltnp | grep 3306                         # écoute sur 10.0.20.X:3306 (pas 127.0.0.1)
+</code></pre>
+<h3 id="t04-a-t07-etat-du-cluster">T04 à T07 — État du cluster</h3>
+<p><strong>SUR bdd-01, bdd-02, bdd-03</strong></p>
+<pre><code class="language-bash">NO_COLOR=1 ./scripts/validation/check-galera.sh | tee &quot;evidence/test-results/$(date +%F)-T04-T07-$(hostname -s).txt&quot;
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Test</th>
+<th>Variable</th>
+<th>Attendu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>T04</td>
+<td><code>wsrep_cluster_size</code></td>
+<td><code>3</code></td>
+</tr>
+<tr>
+<td>T05</td>
+<td><code>wsrep_cluster_status</code></td>
+<td><code>Primary</code></td>
+</tr>
+<tr>
+<td>T06</td>
+<td><code>wsrep_local_state_comment</code></td>
+<td><code>Synced</code></td>
+</tr>
+<tr>
+<td>T07</td>
+<td><code>wsrep_ready</code></td>
+<td><code>ON</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Captures : <code>03-galera-cluster-size.png</code>, <code>04-galera-synced.png</code></p>
+<h3 id="t08-replication">T08 — Réplication</h3>
+<p>Procédure : <a href="/procedure?id=mo-01-galera">MO-1-Cluster-Galera.md</a></p>
+<p>Critère : une ligne insérée sur un nœud est lisible immédiatement sur les deux autres, dans les trois sens.</p>
+<h3 id="t20-perte-dun-nud">T20 — Perte d'un nœud</h3>
+<h4 id="preparation">Préparation</h4>
+<ul>
+<li>T03 à T10 réussis.</li>
+<li>Snapshot Proxmox des 3 nœuds (recommandé).</li>
+<li>WordPress ouvert dans un navigateur (pour observer l'absence d'impact).</li>
+</ul>
+<h4 id="execution-guidee">Exécution guidée</h4>
+<p><strong>SUR haproxy</strong></p>
+<pre><code class="language-bash">./scripts/failover/test-galera-node.sh --node 3
+</code></pre>
+<p>Le script indique la commande à lancer :</p>
+<p><strong>SUR bdd-03</strong></p>
+<pre><code class="language-bash">sudo systemctl stop mariadb
+</code></pre>
+<h4 id="verifications-pendant-la-panne">Vérifications pendant la panne</h4>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Vérification</th>
+<th>Attendu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>wsrep_cluster_size</code> sur bdd-01 et bdd-02</td>
+<td><code>2</code></td>
+</tr>
+<tr>
+<td><code>wsrep_cluster_status</code></td>
+<td><code>Primary</code> (2/3 = majorité)</td>
+</tr>
+<tr>
+<td>SQL via HAProxy (6 connexions)</td>
+<td>6 succès, bdd-03 absent des réponses</td>
+</tr>
+<tr>
+<td>Page de stats HAProxy</td>
+<td>bdd-03 <strong>DOWN</strong></td>
+</tr>
+<tr>
+<td>WordPress</td>
+<td>Fonctionnel</td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="retour">Retour</h4>
+<p><strong>SUR bdd-03</strong></p>
+<pre><code class="language-bash">sudo systemctl start mariadb          # PAS galera_new_cluster
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Vérification</th>
+<th>Attendu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>wsrep_cluster_size</code></td>
+<td><code>3</code> sur les 3 nœuds</td>
+</tr>
+<tr>
+<td>bdd-03</td>
+<td><code>Synced</code> (après IST)</td>
+</tr>
+<tr>
+<td>HAProxy</td>
+<td>bdd-03 <strong>UP</strong></td>
+</tr>
+</tbody>
+</table></div>
+<h4 id="variante-ecritures-pendant-la-panne">Variante : écritures pendant la panne</h4>
+<p>Insérer des lignes pendant que bdd-03 est arrêté (via bdd-01), puis vérifier après son retour qu'il les possède : démontre l'<strong>IST</strong> (transfert incrémental).</p>
+<h3 id="test-complementaire-non-numerote-perte-de-deux-nuds">Test complémentaire (non numéroté) — perte de deux nœuds</h3>
+<p>À réaliser <strong>uniquement</strong> en démonstration pédagogique, avec snapshot préalable :</p>
+<ol>
+<li>Arrêt <strong>propre</strong> de bdd-02 puis bdd-03 : bdd-01 reste <code>Primary</code> avec <code>cluster_size = 1</code> (les départs ont été annoncés).</li>
+<li>Pour illustrer le quorum, il faut une disparition <strong>non annoncée</strong> (ex. coupure réseau de deux nœuds via Proxmox, <em>Hardware → Network Device → Disconnect</em>) : le nœud restant passe <code>non-Primary</code> et refuse les requêtes.</li>
+</ol>
+<p>Reprise : <a href="/procedure?id=mo-01-galera">MO-1-Cluster-Galera.md</a>.</p>
+<hr />
+<h2 id="tests-haproxy">Tests HAProxy</h2>
+<h3 id="etat-general">État général</h3>
+<p><strong>SUR haproxy</strong></p>
+<pre><code class="language-bash">NO_COLOR=1 ./scripts/validation/check-haproxy.sh | tee &quot;evidence/test-results/$(date +%F)-haproxy-status.txt&quot;
+</code></pre>
+<p>Attendu : service actif, syntaxe valide, ports 80/8080/3306/8404 en écoute, tous les serveurs <code>UP</code>.</p>
+<p>Capture : page <code>http://10.0.10.2:8404/stats</code> depuis adm-01 → <code>05-haproxy-status.png</code></p>
+<h3 id="t09-haproxy-sql">T09 — HAProxy SQL</h3>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">mariadb -h 10.0.10.2 -P 3306 -u wordpress -p -e 'SELECT @@hostname, @@wsrep_node_name;'
+</code></pre>
+<p>Attendu : connexion réussie, nom d'un nœud Galera.</p>
+<h3 id="t10-round-robin-sql">T10 — Round-robin SQL</h3>
+<p><strong>SUR haproxy</strong></p>
+<pre><code class="language-bash">NO_COLOR=1 ./scripts/utilities/test-sql-round-robin.sh -n 9 | tee &quot;evidence/test-results/$(date +%F)-T10-sql-round-robin.txt&quot;
+</code></pre>
+<p>Attendu : 9/9 connexions réussies, <strong>3 nœuds distincts</strong>.</p>
+<h3 id="t13-haproxy-http">T13 — HAProxy HTTP</h3>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">for i in $(seq 1 6); do curl -s -o /dev/null -D - http://10.0.10.2/ | grep -Ei '^HTTP/|x-served-by'; done
+</code></pre>
+<p>Attendu : codes <code>200</code> (ou <code>30x</code>), <code>X-Served-By</code> alternant <strong>web-01</strong> / <strong>web-02</strong>.</p>
+<h3 id="test-complementaire-health-check-applicatif">Test complémentaire — health-check applicatif</h3>
+<p>Vérifie qu'un serveur dont l'<strong>application</strong> est cassée est retiré, alors qu'Apache tourne toujours (un check TCP ne verrait rien). On simule la panne en rendant <code>/wp-login.php</code> introuvable (réponse <code>404</code>, hors de la plage <code>200-399</code> attendue).</p>
+<p><strong>SUR web-02</strong></p>
+<pre><code class="language-bash">sudo mv /var/www/wordpress/wp-login.php /var/www/wordpress/wp-login.php.test-hc
+</code></pre>
+<p><strong>SUR adm-01</strong> (après ~10 s)</p>
+<pre><code class="language-bash">for i in 1 2 3 4; do curl -sI http://10.0.10.2/ | grep -i x-served-by; done   # uniquement web-01
+</code></pre>
+<p><strong>SUR web-02</strong> (remise en état <strong>immédiate</strong>)</p>
+<pre><code class="language-bash">sudo mv /var/www/wordpress/wp-login.php.test-hc /var/www/wordpress/wp-login.php
+</code></pre>
+<p>Ce test prouve l'intérêt de <code>option httpchk</code> sur <code>/wp-login.php</code> par rapport à un simple check TCP.</p>
+<h3 id="t17-glpi-via-haproxy">T17 — GLPI via HAProxy</h3>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">NO_COLOR=1 ./scripts/validation/check-glpi.sh | tee &quot;evidence/test-results/$(date +%F)-T17-glpi.txt&quot;
+</code></pre>
+<p>Attendu : glpi UP en direct et via <code>10.0.10.2:8080</code>, page identifiée comme GLPI.</p>
+<hr />
+<h2 id="test-de-failover-wordpress">Test de failover WordPress</h2>
+<p>Tests <strong>T14</strong> (panne web-01), <strong>T15</strong> (panne web-02) et <strong>T16</strong> (réintégration).</p>
+<h3 id="objectif_1">Objectif</h3>
+<p>Démontrer que l'arrêt d'un serveur web <strong>n'interrompt pas</strong> le site : HAProxy détecte la panne et envoie tout le trafic vers le serveur restant, puis réintègre automatiquement le serveur à son retour.</p>
+<h3 id="prerequis">Prérequis</h3>
+<ul>
+<li>[ ] T11, T12, T13 réussis (les deux serveurs répondent, alternance via HAProxy).</li>
+<li>[ ] Accès SSH à web-01 et web-02 depuis adm-01.</li>
+<li>[ ] Page de statistiques HAProxy ouverte (<code>http://10.0.10.2:8404/stats</code>) pour la démonstration visuelle.</li>
+</ul>
+<h3 id="observation-continue-recommandee">Observation continue (recommandée)</h3>
+<p><strong>SUR adm-01</strong> — terminal dédié, laissé ouvert pendant tout le test :</p>
+<pre><code class="language-bash">while true; do
+  printf '%s  ' &quot;$(date +%T)&quot;
+  curl -s -o /dev/null -D - --max-time 3 http://10.0.10.2 | grep -Ei '^HTTP/|x-served-by' | tr -d '\r' | tr '\n' ' '
+  echo
+  sleep 1
+done
+</code></pre>
+<h3 id="t14-web-01-arrete-web-02-doit-continuer">T14 — web-01 arrêté : web-02 doit continuer</h3>
+<h4 id="1-etat-initial">1. État initial</h4>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">curl -I http://10.0.10.2
+</code></pre>
+<p>Plusieurs requêtes : <code>X-Served-By</code> alterne <code>web-01</code> / <code>web-02</code>.</p>
+<h4 id="2-panne">2. Panne</h4>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">sudo systemctl stop apache2
+</code></pre>
+<h4 id="3-verification">3. Vérification</h4>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">curl -I http://10.0.10.2
+</code></pre>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Critère</th>
+<th>Attendu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Code HTTP</td>
+<td><code>200</code> (ou <code>30x</code>) — <strong>jamais</strong> <code>503</code> ni erreur de connexion</td>
+</tr>
+<tr>
+<td><code>X-Served-By</code></td>
+<td><code>web-02</code> uniquement</td>
+</tr>
+<tr>
+<td>Page de stats</td>
+<td>web-01 <strong>DOWN</strong> (rouge) après ~9 s</td>
+</tr>
+</tbody>
+</table></div>
+<p>Capture : <code>08-failover-web01-down.png</code></p>
+<h4 id="4-retour-t16">4. Retour (T16)</h4>
+<p><strong>SUR web-01</strong></p>
+<pre><code class="language-bash">sudo systemctl start apache2
+</code></pre>
+<p><strong>SUR adm-01</strong> — après ~6 s :</p>
+<pre><code class="language-bash">curl -I http://10.0.10.2
+</code></pre>
+<p><code>X-Served-By</code> alterne à nouveau <code>web-01</code> / <code>web-02</code> : <strong>réintégration automatique</strong>, sans action sur HAProxy.</p>
+<h3 id="t15-web-02-arrete-web-01-doit-continuer">T15 — web-02 arrêté : web-01 doit continuer</h3>
+<p>Procédure identique, en inversant les rôles.</p>
+<p><strong>SUR web-02</strong></p>
+<pre><code class="language-bash">sudo systemctl stop apache2
+</code></pre>
+<p><strong>SUR adm-01</strong></p>
+<pre><code class="language-bash">curl -I http://10.0.10.2          # X-Served-By: web-01 uniquement
+</code></pre>
+<p>Capture : <code>09-failover-web02-down.png</code></p>
+<p><strong>SUR web-02</strong></p>
+<pre><code class="language-bash">sudo systemctl start apache2
+</code></pre>
+<h3 id="version-scriptee">Version scriptée</h3>
+<p>Les scripts reproduisent exactement cette procédure (mode guidé : ils indiquent la commande à lancer et attendent la confirmation de l'opérateur) :</p>
+<pre><code class="language-bash"># SUR adm-01
+./scripts/failover/test-web01-failure.sh --save     # T14 + T16
+./scripts/failover/test-web02-failure.sh --save     # T15 + T16
+</code></pre>
+<p>Option <code>--auto</code> : le script arrête et redémarre Apache lui-même via SSH (alias <code>web01</code>/<code>web02</code> de <code>~/.ssh/config</code>), après confirmation, et relance Apache s'il est interrompu.</p>
+<h3 id="interpretation">Interprétation</h3>
+<div class="doc-table"><table>
+<thead>
+<tr>
+<th>Observation</th>
+<th>Explication</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Aucune erreur, même dans les premières secondes</td>
+<td>Requêtes vers web-01 refusées puis <strong>rejouées</strong> sur web-02 (<code>retries 3</code> + <code>option redispatch</code>)</td>
+</tr>
+<tr>
+<td>Quelques erreurs dans les premières secondes</td>
+<td>Possible si le serveur ne refuse pas mais <strong>ne répond plus</strong> (VM figée) : les requêtes attendent le timeout jusqu'à détection (<code>fall 3</code>)</td>
+</tr>
+<tr>
+<td><code>503</code> permanent</td>
+<td>Les deux serveurs sont DOWN : vérifier web-02 et le health-check</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="variante-arret-de-la-vm">Variante : arrêt de la VM</h3>
+<p>Simuler une panne matérielle : <strong>SUR L'HÔTE PROXMOX</strong>, <em>Shutdown</em> (ou <em>Stop</em>) de la VM web-01. Le comportement attendu est le même ; la détection repose alors sur le timeout de connexion.</p>
