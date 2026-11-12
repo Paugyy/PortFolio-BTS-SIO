@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://paugy.org/</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/entreprise</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/ecole</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/projet-ha</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/infra</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedures</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/ressources</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/veille</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/synthese</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/cv</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/contact</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/confidentialite</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-01-galera</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-02-haproxy</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-03-wordpress-ha</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-04-glpi</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-05-ssh-durcissement</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-06-sauvegarde</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-07-git</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-08-zabbix</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-09-rsyslog-loganalyzer</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=mo-10-pfsense-journalisation</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=plan-de-tests</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=depannage</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=guide-proxmox-vm</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=guide-pfsense</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=guide-active-directory</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=guide-ssh-cle</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=guide-guacamole-docker</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=guide-docker-debian</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://paugy.org/procedure?id=guide-glpi-lamp</loc><lastmod>2026-11-12</lastmod></url>
+</urlset>
