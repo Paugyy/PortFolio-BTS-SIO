@@ -95,6 +95,28 @@
   });
   renderArticles();
 
+  /* Alertes et incidents suivis */
+  const albox = document.getElementById("vt-alertes");
+  if (albox && typeof VEILLE_ALERTES !== "undefined") {
+    [...VEILLE_ALERTES].sort((x, y) => y.date.localeCompare(x.date)).forEach(a => {
+      const card = el("article", "card vt-article vt-alerte");
+      const head = el("div", "vt-meta");
+      const t = el("time", null, a.quand || fmt(a.date));
+      t.dateTime = a.date;
+      head.append(t, el("span", null, "· " + a.produit));
+      const badges = el("div", "tags");
+      if (a.cve) badges.append(el("span", "tag vt-cve", a.cve));
+      badges.append(el("span", "tag vt-grav" + (/critique/i.test(a.gravite) ? " crit" : ""), a.gravite));
+      const imp = el("div", "vt-impact");
+      imp.append(el("strong", null, "Ce que je vérifie / ce que j'en retiens"), el("p", null, a.action));
+      const foot = el("p", "vt-lien");
+      foot.append(document.createTextNode("Sources : "));
+      a.sources.forEach((s, i) => { if (i) foot.append(document.createTextNode(" · ")); foot.append(link(s.url, s.nom + " ↗")); });
+      card.append(head, badges, el("h3", null, a.titre), el("p", "vt-resume", a.resume), imp, foot);
+      albox.append(card);
+    });
+  }
+
   /* Bilan */
   const bbox = document.getElementById("vt-bilan");
   VEILLE_BILAN.forEach(b => bbox.append(el("li", null, b)));

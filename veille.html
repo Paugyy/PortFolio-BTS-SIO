@@ -55,6 +55,10 @@
     .vt-impact p { margin: 0; line-height: 1.55; }
     .vt-lien { margin: 14px 0 0; font-size: .88rem; }
     #vt-bilan { margin: 0; padding-left: 20px; display: grid; gap: 10px; line-height: 1.55; }
+    #vt-alertes { display: grid; gap: 18px; }
+    .vt-alerte .tags { margin: 8px 0 0; }
+    .vt-cve { font-family: var(--mono, monospace); }
+    .vt-grav.crit { background: rgba(239, 68, 68, .14); color: #fca5a5; }
   </style>
 </head>
 <body>
@@ -88,6 +92,11 @@
         <div id="vt-articles"></div>
       </div>
 
+      <div>
+        <div class="vt-title"><h2>Alertes et incidents suivis</h2><p>Failles et pannes marquantes du moment, en dehors de mon sujet principal.</p></div>
+        <div id="vt-alertes"></div>
+      </div>
+
       <div class="card vt-panel">
         <span class="vt-label">Bilan</span>
         <ul id="vt-bilan"></ul>
@@ -106,9 +115,9 @@
   </section>
 </main>
 
-<script src="/assets/js/veille-data.js?v=202610211105"></script>
+<script src="/assets/js/veille-data.js?v=202611122000"></script>
 <script src="/assets/js/main.js?v=202611121800"></script>
-<script src="/assets/js/page-veille.js?v=202610211100"></script>
+<script src="/assets/js/page-veille.js?v=202611122000"></script>
 <script type="module" src="/assets/js/scene.js?v=202610081500"></script>
 </body>
 </html>
