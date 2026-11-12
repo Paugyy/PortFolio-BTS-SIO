@@ -112,7 +112,7 @@ const REALISATIONS = [
   { modalite: "formation", titre: "Veille technologique : sécurité des navigateurs et extensions malveillantes", periode: "2e année",
     productions: [{ label: "Page veille", href: "/veille" }],
     comp: ["1.6.1", "1.6.2"] },
-  { modalite: "formation", titre: "Portfolio BTS SIO (paugy.org)", periode: "2e année",
-    productions: [{ label: "Site", href: "/" }, { label: "Code source", href: "https://github.com/Paugyy/PortFolio-BTS-SIO" }],
-    comp: ["1.3.1", "1.3.3", "1.6.3", "1.6.4"] },
+  { modalite: "formation", titre: "Portfolio BTS SIO (paugy.org) : référencement et mesure de visibilité (Google Search Console)", periode: "2e année",
+    productions: [{ label: "Site", href: "/" }, { label: "Plan du site (sitemap)", href: "/sitemap.xml" }, { label: "Code source", href: "https://github.com/Paugyy/PortFolio-BTS-SIO" }],
+    comp: ["1.3.1", "1.3.2", "1.3.3", "1.6.3", "1.6.4"] },
 ];
